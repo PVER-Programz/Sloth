@@ -94,7 +94,7 @@ async def cmd_usrid(ctx: interactions.SlashContext, can_deliver: bool):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1376080410215448618>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
 	else:
 		user_doc = db.collection("Users").document(str(ctx.user.id))
 		if user_doc.get().exists:
@@ -109,7 +109,43 @@ async def cmd_usrid(ctx: interactions.SlashContext, can_deliver: bool):
 
 
 @interactions.slash_command(name="profile", sub_cmd_name="edit", sub_cmd_description="Edit your Profile")
-async def profile_edit(ctx: interactions.SlashContext):
+@interactions.slash_option(
+	name="name",
+	description="Enter name as per VIT id",
+	required=False,
+	opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+	name="phone_number",
+	description="For contact purposes while delivery",
+	required=False,
+	opt_type=interactions.OptionType.STRING,
+	min_length=10,
+	max_length=13
+)
+@interactions.slash_option(
+	name='upi_id',
+	description="Payment for food via UPI only",
+	required=False,
+	opt_type=interactions.OptionType.STRING
+)
+@interactions.slash_option(
+	name='hosteller',
+	description="Are you a hosteller ?",
+	required=False,
+	opt_type=interactions.OptionType.BOOLEAN
+)
+@interactions.slash_option(
+	name='gender',
+	description="Are you a guy or girl ?",
+	required=False,
+	opt_type=interactions.OptionType.STRING,
+	choices=[
+		interactions.SlashCommandChoice(name="Guy", value="Guy"),
+		interactions.SlashCommandChoice(name="Girl", value='Girl')
+	]
+)
+async def profile_edit(ctx: interactions.SlashContext, name=None, phone_number=None, upi_id=None, hosteller=None, gender=None):
 	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 	guild_member = await guild.fetch_member(ctx.user.id)
 	try:
@@ -118,62 +154,62 @@ async def profile_edit(ctx: interactions.SlashContext):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1376080410215448618>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
 	else:
-		user_doc_ref = db.collection("Users").document(str(ctx.user.id))
-		user_doc = user_doc_ref.get()
-		if user_doc.exists:
-			user_data = user_doc.to_dict()
-			try:
-				name_fill = user_data['name']
-				phone_fill = user_data['phone']
-				email_fill = user_data['email'].split("20")[0]
-				upi_fill = user_data['upi']
-			except KeyError:
-				name_fill = ("KEY ERROR")
-				phone_fill = ("KEY ERROR")
-				email_fill = ("KEY ERROR")
-				upi_fill = ("KEY ERROR")
-		else:
-			name_fill = ("USER ERROR")
-			phone_fill = ("USER ERROR")
-			email_fill = ("USER ERROR")
-			upi_fill = ("USER ERROR")
-		name_modal = interactions.Modal(
-		interactions.ShortText(label="Name", custom_id="name_short_text", min_length=4, value=name_fill),
-		interactions.ShortText(label="Phone number", custom_id="phn_short_text", min_length=10, value=phone_fill),
-		interactions.ShortText(label="UPI id", custom_id="upi_short_text", min_length=5, value=upi_fill),
-		title="User Profile",
-		custom_id="name_modal",
-		)
-		await ctx.send_modal(modal=name_modal)
-		modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(name_modal)
-		name = modal_ctx.responses["name_short_text"]
-		phn = modal_ctx.responses["phn_short_text"]
-		upi = modal_ctx.responses["upi_short_text"]
-
-		try:
-			pfields = 1
-			if phn not in ["1234567890", "0123456789", "0"*10, "1"*10, "2"*10, "3"*10, "4"*10, "5"*10, "6"*10, "7"*10, "8"*10, "9"*10] and phn.isdigit():
-				pfields+=1
-			if name not in email_fill and name not in ["USER ERROR", "KEY ERROR"]:
-				pfields+=1
-			if "@" in upi:
-				pfields+=1
-			user_doc_ref.set({
-				'name': name,
-				'phone': phn,
-				'upi': upi,
-				'profile_completion': (pfields/4)*100
-			}, merge=True)
-			if "@" not in upi:
-				await modal_ctx.send("**NOTE:** Please re-check your UPI id. Your delivery rewards would be credited throgh Gpay only.")
-			elif not phn.isdigit():
-				await modal_ctx.send("**NOTE:** Please re-check your Phone number. Your Phone number is crusial for delivery purposes.")
+		# try:
+			user_doc_ref = db.collection("Users").document(str(ctx.user.id))
+			user_dic = user_doc_ref.get().to_dict()
+			pc_fill=1
+			response = ""
+			if name!=None:
+				pc_fill+=1
 			else:
-				await modal_ctx.send(f"✅ Your profile has been updated successfully!")
-		except Exception as e:
-			await modal_ctx.send(f"❌ An error occurred while updating your profile: {e}")
+				name=user_dic['name']
+				if name not in user_dic['email']:
+					pc_fill+=1
+			if phone_number!=None and phone_number not in ["1234567890", "0123456789", "0"*10, "1"*10, "2"*10, "3"*10, "4"*10, "5"*10, "6"*10, "7"*10, "8"*10, "9"*10]:
+				pc_fill+=1
+			else:
+				phone_number = user_dic['phone']
+				if phone_number in ["1234567890", "0123456789", "0"*10, "1"*10, "2"*10, "3"*10, "4"*10, "5"*10, "6"*10, "7"*10, "8"*10, "9"*10]:
+					response = "📞 Please fill Your Phone Number. It is required by the delivery executives for contact purposes\n"+response
+				else:
+					pc_fill+=1
+			if upi_id!=None and "@" in upi_id and len(upi_id)>4:
+				pc_fill+=1
+			else:
+				upi_id = user_dic['upi']
+				if not ("@" in upi_id and len(upi_id)>4):
+					response = "📱 Please fill Your UPI id. Delivery bonus will be credited to you via GPay only.\n"+response
+				else:
+					pc_fill+=1
+			if hosteller!=None:
+				pc_fill+=1
+			else:
+				hosteller = user_dic['hosteller']
+				if hosteller==None:
+					response = "🏠 Are you hosteller or dayscholar bruh ?\n"+response
+				else:
+					pc_fill+=1
+			if gender!=None:
+				pc_fill+=1
+			else:
+				gender = user_dic['gender']
+				if gender==None:
+					response = "🌚 Not to be nosy but are you he/him or she/her ?\n"+response
+				else:
+					pc_fill+=1
+			pc_score=int((pc_fill/6)*100)
+			user_doc_ref.set({'name':name, 'phone':phone_number, 'upi':upi_id, 'hosteller':hosteller, 'gender':gender, 'profile_completion': pc_score}, merge=True)
+			#hosteller - stance
+			if response!="":
+				await ctx.send(response, ephemeral=True)
+			if name == None and phone_number == None and upi_id == None and hosteller == None and gender == None:
+				await ctx.send("Use </profile page:1385296092232552570> to view Profile")
+			else:
+				await ctx.send(f"{ctx.user.mention} ✅ Your profile has been updated successfully!")
+		# except Exception as e:
+		# 	await ctx.send(f"❌ An error occurred while updating your profile")
 
 @interactions.slash_command(name="profile", sub_cmd_name="page", sub_cmd_description="View your Profile")
 async def profile_view(ctx: interactions.SlashContext):
@@ -185,82 +221,70 @@ async def profile_view(ctx: interactions.SlashContext):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1376080410215448618>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
 		return
 	else:
 		user_doc_ref = db.collection("Users").document(str(ctx.user.id))
 		user_doc = user_doc_ref.get()
-		if user_doc.exists:
-			user_data = user_doc.to_dict()
-			try:
-				name_fill = user_data['name']
-				phone_fill = user_data['phone']
-				email = user_data['email']
-				upi_fill = user_data['upi']
-				pc_fill = user_data['profile_completion']
-				cd_fill = user_data['can_deli']
-			except KeyError:
-				name_fill = "KEY ERROR"
-				phone_fill = "KEY ERROR"
-				email = "KEY ERROR"
-				upi_fill = "KEY ERROR"
-				pc_fill = "KEY ERROR"
-				cd_fill = "KEY ERROR"
-		else:
-			name_fill = "USER ERROR"
-			phone_fill = "USER ERROR"
-			email = "USER ERROR"
-			upi_fill = "USER ERROR"
-			pc_fill = "USER ERROR"
-			cd_fill = "USER ERROR"
+		user_data = user_doc.to_dict()
 	embed = interactions.Embed(
 		title="Your Profile Page",
-		description="Use </profile edit:1376080410215448619> to edit profile",
+		description="Use </profile edit:1385296092232552570> to edit profile",
 		color=0xFAD35C,
 	)
 
 	embed.add_field(
 		name="Name",
-		value=name_fill,
+		value=user_data['name'],
 		inline=False,
 	)
 	embed.add_field(
 		name="Email",
-		value=email,
+		value=user_data['email'],
 		inline=False,
 	)
 	embed.add_field(
 		name="Phone number",
-		value=phone_fill,
+		value=user_data['phone'],
 		inline=True,
 	)
 	embed.add_field(
 		name="UPI ID",
-		value=upi_fill,
-		inline=True,
-	)
-	embed.add_field(
-		name="Can Deliver",
-		value=str(cd_fill),
+		value=user_data['upi'],
 		inline=True,
 	)
 	embed.add_field(
 		name="Cart Items",
-		value=str("Use </cart:1376080410215448622> to view your cart"),
+		value=str("Use </cart:1385296092232552571> to view your cart"),
+		inline=False,
+	)
+	embed.add_field(
+		name="Stance",
+		value="Hosteller" if user_data['hosteller'] else "Dayscholar",
+		inline=True,
+	)
+	embed.add_field(
+		name="Selfhood",
+		value="Guy" if user_data['gender'] else "None" if user_data['gender']==None else "Girl",
+		inline=True,
+	)
+	embed.add_field(
+		name="Can Deliver",
+		value=str(user_data['can_deli']),
 		inline=True,
 	)
 	embed.add_field(
 		name="Profile Completion",
-		value=f"{pc_fill}%",
-		inline=False,
+		value=f"{user_data['profile_completion']}%",
+		inline=True,
 	)
 	embed.add_field(
 		name="UPI QR",
 		value="Your UPI QR:",
 		inline=False,
 	)
-	if "@" in upi_fill and " " not in upi_fill.strip():
-		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={upi_fill}")
+	if "@" in user_data['upi'] and " " not in user_data['upi'].strip():
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={user_data['upi']}")
 	else:
 		embed.set_image(url=f"https://placehold.co/600x300/FF0000/FFFFFF.png?text=UPI_not_set")
 	await ctx.send(embed=embed, ephemeral=True)
@@ -288,7 +312,7 @@ async def register(ctx: interactions.SlashContext):
 	await ctx.send_modal(modal=reg_modal)
 	modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(reg_modal)
 	email = modal_ctx.responses["reg_short_text"]
-	if email.strip().endswith("@blogger.com"):
+	if email.strip().endswith("@vitstudent.ac.in"):
 		users_collection = db.collection("Users")
 		try:
 			user = auth.get_user_by_email(email)
@@ -300,10 +324,10 @@ async def register(ctx: interactions.SlashContext):
 				disids=disids+f"<@{x.id}>"
 				id_count=id_count+1
 			if id_count>0:
-				await modal_ctx.send(f"User with email `{email[:4]}****@blogger.com` already exists. and registered to {disids}")
+				await modal_ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
 			else:
 				if send_reset_link(email):
-					await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1376080410215448620> to connect your discord to Sloth App.", components=[gmailBtn])
+					await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn])
 				else:
 					await modal_ctx.send("Registration ERROR: Unable to send verification mail.")
 				# link = auth.generate_password_reset_link(email)
@@ -311,7 +335,7 @@ async def register(ctx: interactions.SlashContext):
 		except auth.UserNotFoundError:
 			user = auth.create_user(email=email,password=email[::-1])
 			if send_reset_link(email):
-				await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1376080410215448620> to connect your discord to Sloth App.", components=[gmailBtn])
+				await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn])
 			else:
 				await modal_ctx.send("Registration ERROR: Unable to send verification mail.")
 			# link = auth.generate_password_reset_link(email)
@@ -336,7 +360,7 @@ async def connect(ctx: interactions.SlashContext):
 	if users_collection.document(str(ctx.user.id)).get().exists:
 		await modal_ctx.send("🤡 User already connected")
 	else:
-		if email.strip().endswith("@blogger.com"):
+		if email.strip().endswith("@vitstudent.ac.in"):
 			try:
 				testuser = auth.get_user_by_email(email)
 				if sign_in_with_email_and_password(email, ctx.user.username):
@@ -344,7 +368,8 @@ async def connect(ctx: interactions.SlashContext):
 					member = ctx.guild.get_member(dis_uid)
 					user_data = {"email": email, "username": ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{},
 								# "name": email[:email.index('20')], "phone": '0000000000', "upi": "not_set", "profile_completion": (2/4)*100}
-								"name": email[:email.index('@')], "phone": '0000000000', "upi": "not_set", "profile_completion": (2/4)*100}
+								"name": email[:email.index('@')], "phone": '0000000000', "upi": "not_set", "profile_completion": int((1/6)*100),
+								"gender": None, "hosteller": None}
 					users_collection.document(str(ctx.user.id)).set(user_data)
 					await member.add_role(ids_json['veri_role'])
 					await modal_ctx.send(f"<@{dis_uid}> Just got Verified 🏆")
@@ -369,7 +394,7 @@ async def menu_view(ctx: interactions.SlashContext):
 	for x in res_data:
 		embed = interactions.Embed(
 			title=x,
-			description="Use </cart:1376080410215448622> to add items to cart",
+			description="Clcik </cart:1385296092232552571> to add items to cart",
 			color=0xFAD35C,
 		)
 		for z in res_data[x]:
@@ -389,7 +414,7 @@ async def menu_view(ctx: interactions.SlashContext):
 async def order_command(ctx: interactions.SlashContext):
 	embed = interactions.Embed(
 		title="Order Food",
-		description="Verify </cart:1376080410215448622> before you buy.",
+		description="Verify </cart:1385296092232552571> before you buy.",
 		color=0x00FF00
 	)
 	await ctx.send(embeds=embed)
@@ -459,7 +484,7 @@ async def cart_view(ctx: interactions.SlashContext):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1376080410215448618>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Clcik </register:1385296092232552573>")
 	else:
 		restraunts = db.collection("Menu").stream()
 		res_data = {}
@@ -529,7 +554,7 @@ async def cart_view(ctx: interactions.SlashContext):
 		actRow3 = ActionRow(interactions.StringSelectMenu(['1', '2', '3', '4', '5'], placeholder="How many to buy ?", custom_id="dish_cou", min_values=1, max_values=1))
 		actRow4 = ActionRow(add2cart_button, remove_from_cart_button)
 		# global_users[ctx.user.id]['comp'] = [actRow0, actRow1, actRow2, actRow3, actRow4]
-		message = await ctx.send("Use </menu:1376145927567310868> to view available dishes to order", embed=embed, components=[actRow0, actRow1, actRow2, actRow3, actRow4], ephemeral=True)
+		message = await ctx.send("Use </menu:1385296092232552569> to view available dishes to order", embed=embed, components=[actRow0, actRow1, actRow2, actRow3, actRow4], ephemeral=True)
 
 
 # global_users = {}
@@ -682,7 +707,7 @@ async def a2c_callback(ctx):
 		if res_change:
 			await ctx.edit_origin(content =f"Selected Restraunt is changed to {user_dic['selected_res']}. Cart Cleared.", embed=embed)
 		else:
-			await ctx.edit_origin(content="Use </menu:1376145927567310868> to view available dishes to order", embed=embed)	
+			await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
 	else:
 		await ctx.send(f"<@{ctx.user.id}>\n ‼ Please select Product to add to cart.", ephemeral=True)
 
@@ -721,43 +746,60 @@ async def r2c_callback(ctx):
 			pass
 	user_doc.set({'cart':user_dic['cart'], 'cart_total':tot_cost}, merge=True)
 	embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
-	await ctx.edit_origin(content="Use </menu:1376145927567310868> to view available dishes to order", embed=embed)	
+	await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
 
 
 @interactions.component_callback("buy_button")
 async def buy_button_callback(ctx: interactions.ComponentContext):
 	ph = rand(["It's my Lunch. Bring ASAP Please.", "Drop by 2 PM.", "Don't forget ketchup", "Enjoy extra tips", "2 More Spoons please"])
 	ord_modal = interactions.Modal(
-		interactions.ShortText(label="Drop Point", custom_id="drop_text", required=True, placeholder="Example: AB-1 708"),
+		interactions.ShortText(label="Drop Point Room no.", custom_id="drop_text", required=True, placeholder="Example: AB-1 708"),
 		interactions.ParagraphText(label="Delivery Instructions", custom_id="inst_text", placeholder=f"Eg: {ph}", required=False),
 		title=f"Final details for Order",
 		custom_id="ord_modal",
 	)
-	await ctx.send_modal(modal=ord_modal)
+	user_data = db.collection('Users').document(str(ctx.user.id)).get().to_dict()
+	if user_data['cart'] == {}:
+		await ctx.send(f"{ctx.user.mention}\n🤕 Your Cart is empty")
+	elif user_data['profile_completion'] > 90:
+		await ctx.send_modal(modal=ord_modal)
+	else:
+		await ctx.send(f"{ctx.user.mention}\n📉 Your profile is not Complete. Complete Your profile using </profile edit:1385296092232552570>.\nCurrent Profile Completion: **{user_data['profile_completion']}**%")
 
 
 @interactions.modal_callback("ord_modal")
 async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_text: str):
 	ord_no = int(time.time())
-	orders_doc = db.collection("orders").document(str(ctx.user.id))
+	orders_doc = db.collection("orders").document('open')
 	try:
 		users_ref = db.collection('Users')
 		query = users_ref.where('can_deli', '==', True).stream()
-		document_ids = []
+		requested_users_id_msgs = {}
+		acc_button = Button(style=ButtonStyle.GREEN, label="Accept", custom_id="acc_button")
+		dec_button = Button(style=ButtonStyle.DANGER, label="Decline", custom_id="dec_button")
+		dec_button_chan = Button(style=ButtonStyle.DANGER, label="Decline", custom_id="dec_button_chan")
 		for doc in query:
 			if doc.id != ctx.user.id:
 				guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 				guild_member = await guild.fetch_member(int(doc.id))
 				if guild_member!=None:
 					member_dm = await guild_member.fetch_dm()
-					dm_message = await member_dm.send("Are you")
-					document_ids.append(doc.id)
+					dm_message = await member_dm.send("Are you willing to deliver ?", components=[acc_button, dec_button])
+					requested_users_id_msgs[doc.id]=dm_message.id
 					print("DMed:", guild_member.tag)
 				else:
 					print("Not member:", guild_member.tag)
-		message = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}")
-		user_doc.set({'cart':user_dic['cart'], 'cart_total':tot_cost}, merge=True)
+		update_button = Button(style=ButtonStyle.PRIMARY, label="Order Status", custom_id="upd_button")
+		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button")
+		userDmRow = ActionRow(update_button, canc_button)
+		user_dm = ctx.user.fetch_dm()
+		user_dm.send("You have ordered this", components=[userDmRow])
+		ord_chan_message = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button, dec_button_chan])
+		ord_details={'customer':ctx.user.id, 'drop':drop_text, 'instruction':inst_text, 'requestees':requested_users_id_msgs}
+		orders_doc.set({ord_no: ord_details}, merge=True)
+		await modal_ctx.send("Fetching the Perfect person for you.")
 	except Exception as e:
+		print(type(e), e)
 		await ctx.send(f"ERROR Occured")
 
 @interactions.component_callback("clear_button")
@@ -781,5 +823,13 @@ async def clear_button_callback(ctx: interactions.ComponentContext):
 	except:
 		await ctx.send("ERROR: Unable to Clear Cart")
 
+
+@interactions.component_callback("acc_button")
+async def clear_button_callback(ctx: interactions.ComponentContext):
+	await ctx.send("Accept Button")
+
+@interactions.component_callback("acc_button")
+async def clear_button_callback(ctx: interactions.ComponentContext):
+	await ctx.send("Decline Button")
 
 bot.start()
