@@ -366,13 +366,12 @@ async def connect(ctx: interactions.SlashContext):
 				if sign_in_with_email_and_password(email, ctx.user.username):
 					dis_uid=ctx.user.id
 					member = ctx.guild.get_member(dis_uid)
-					user_data = {"email": email, "username": ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{},
-								# "name": email[:email.index('20')], "phone": '0000000000', "upi": "not_set", "profile_completion": (2/4)*100}
+					user_data = {"email": email, "username": ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{}, 'cart_res':None,
 								"name": email[:email.index('@')], "phone": '0000000000', "upi": "not_set", "profile_completion": int((1/6)*100),
 								"gender": None, "hosteller": None}
 					users_collection.document(str(ctx.user.id)).set(user_data)
 					await member.add_role(ids_json['veri_role'])
-					await modal_ctx.send(f"<@{dis_uid}> Just got Verified 🏆")
+					await modal_ctx.send(f"<@{dis_uid}> Just got Verified 🏆\n\nUse </profile page:1385296092232552570> to view your profile.")
 				else:
 					await modal_ctx.send("Unable Verify. If this Email is registered, check mail for password reset link. Set your passwaord as your discord username and then retry.")
 			except auth.UserNotFoundError:
@@ -500,8 +499,10 @@ async def cart_view(ctx: interactions.SlashContext):
 				cart_res = user_data['cart_res']
 			except KeyError:
 				cart = {}
+				cart_res=None
 		else:
 			cart = {}
+			cart_res=None
 		menu_col = db.collection("Menu")
 		embed = interactions.Embed(
 		title="Cart View",
@@ -519,17 +520,20 @@ async def cart_view(ctx: interactions.SlashContext):
 
 		tot_size = 0
 		tot_cost=0
-		for x in cart:
-			dish_data = menu_col.document(cart_res).get().to_dict()[x]
-			avail = "✅" if dish_data[1] else "🔴"
-			embed.add_field(
-				name=f"{x} [{cart[x]}]",
-				value=f"""Cost: ₹{dish_data[0]} - Availablity: {avail}""",
-				inline=False,
-			)
-			tot_cost+=dish_data[0]*cart[x]
-			tot_size+=cart[x]
-
+		if cart_res!=None and len(cart)!=0:
+			dishes_dic = menu_col.document(cart_res).get().to_dict()
+			for x in cart:
+				dish_data=dishes_dic[x]
+				avail = "✅" if dish_data[1] else "🔴"
+				embed.add_field(
+					name=f"{x} [{cart[x]}]",
+					value=f"""Cost: ₹{dish_data[0]} - Availablity: {avail}""",
+					inline=False,
+				)
+				tot_cost+=dish_data[0]*cart[x]
+				tot_size+=cart[x]
+		else:
+			print("Empty Cart")
 		embed.description = f"{tot_size} items currently in cart"
 		embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
 
@@ -538,7 +542,7 @@ async def cart_view(ctx: interactions.SlashContext):
 			sel_res_placehold = user_data['cart_res']
 		except KeyError:
 			sel_res_placehold = list(res_data.keys())[-1]
-		user_doc.set({'selected_dishes':None, 'selected_count': 1, 'selected_res': sel_res_placehold, 'cart_total': tot_cost}, merge=True)
+		user_doc.set({'selected_dish':None, 'selected_count': 1, 'selected_res': sel_res_placehold, 'cart_total': tot_cost}, merge=True)
 		buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
 		add2cart_button = Button(style=ButtonStyle.PRIMARY, label="Add to cart", custom_id="a2c_button", emoji="🛒")
 		remove_from_cart_button = Button(style=ButtonStyle.SECONDARY, label="Remove from cart", custom_id="r2c_button", emoji="🛒")
@@ -563,7 +567,6 @@ async def cart_view(ctx: interactions.SlashContext):
 async def res_men_callback(ctx):
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	choice = ctx.values[0]
-	user_doc.set({'selected_res':f'{choice}'}, merge=True)
 	dislis = list(db.collection("Menu").document(choice).get().to_dict().keys())
 	user_doc.set({'selactable_dislis':dislis}, merge=True)
 	buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
@@ -580,13 +583,13 @@ async def res_men_callback(ctx):
 	actRow3 = ActionRow(interactions.StringSelectMenu(['1', '2', '3', '4', '5'], placeholder="How many to buy ?", custom_id="dish_cou", min_values=1, max_values=1))
 	actRow4 = ActionRow(add2cart_button, remove_from_cart_button)
 	components=[actRow0, actRow1, actRow2, actRow3, actRow4]
+	user_doc.set({'selected_res':f'{choice}', 'selected_dish':None,'selected_count':None}, merge=True)
 	await ctx.edit_origin(content = f"Selected Restraunt: {choice}", components=components)
 
 @interactions.component_callback("dish_men")
 async def dish_men_callback(ctx):
 	user_doc = db.collection("Users").document(str(ctx.user.id))
-	choice = ctx.values
-	user_doc.set({'selected_dishes':choice}, merge=True)
+	choice = ctx.values[0]
 	buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
 	add2cart_button = Button(style=ButtonStyle.PRIMARY, label="Add to cart", custom_id="a2c_button", emoji="🛒")
 	remove_from_cart_button = Button(style=ButtonStyle.SECONDARY, label="Remove from cart", custom_id="r2c_button", emoji="🛒")
@@ -601,30 +604,19 @@ async def dish_men_callback(ctx):
 	except KeyError:
 		actRow1 = ActionRow(interactions.StringSelectMenu(*list(res_data.keys()), placeholder="Choose to Buy from ?", custom_id="res_men", min_values=1, max_values=1))
 	try:
-		ph=''
-		for x in choice:
-			if len(ph)<145:
-				ph+=x+', '
-			else:
-				ph+='...'
-				break
-		else:
-			ph=ph[:-2]
-		actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=ph, custom_id="dish_men", min_values=1, max_values=1))
-		# actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=ph, custom_id="dish_men", min_values=1, max_values=len(user_dic['selactable_dislis'])))
+		actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=choice, custom_id="dish_men", min_values=1, max_values=1))
 	except KeyError:
 		actRow2 = ActionRow(interactions.StringSelectMenu(*list(res_data[list(res_data.keys())[-1]].keys()), placeholder="Choose to Buy what ?", custom_id="dish_men", min_values=1, max_values=1))
-		# actRow2 = ActionRow(interactions.StringSelectMenu(*list(res_data[list(res_data.keys())[-1]].keys()), placeholder="Choose to Buy what ?", custom_id="dish_men", min_values=1, max_values=len(dislis)))
 	actRow3 = ActionRow(interactions.StringSelectMenu(['1', '2', '3', '4', '5'], placeholder="How many to buy ?", custom_id="dish_cou", min_values=1, max_values=1))
 	actRow4 = ActionRow(add2cart_button, remove_from_cart_button)
 	components=[actRow0, actRow1, actRow2, actRow3, actRow4]
+	user_doc.set({'selected_dish':choice, 'selected_count':None}, merge=True)
 	await ctx.edit_origin(content=f"Selected Dishes: {choice}", components=components)
 
 @interactions.component_callback("dish_cou")
 async def dish_cou_callback(ctx):
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	choice = ctx.values[0]
-	user_doc.set({'selected_count':int(choice)}, merge=True)
 	buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
 	add2cart_button = Button(style=ButtonStyle.PRIMARY, label="Add to cart", custom_id="a2c_button", emoji="🛒")
 	remove_from_cart_button = Button(style=ButtonStyle.SECONDARY, label="Remove from cart", custom_id="r2c_button", emoji="🛒")
@@ -639,23 +631,13 @@ async def dish_cou_callback(ctx):
 	except KeyError:
 		actRow1 = ActionRow(interactions.StringSelectMenu(*list(res_data.keys()), placeholder="Choose to Buy from ?", custom_id="res_men", min_values=1, max_values=1))
 	try:
-		prod_string=""
-		for x in user_dic['selected_dishes']:
-			if len(prod_string)<145:
-				prod_string+=x+', '
-			else:
-				prod_string+='...'
-				break
-		else:
-			prod_string=prod_string[:-2]
-		actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=prod_string, custom_id="dish_men", min_values=1, max_values=1))
-		# actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=prod_string, custom_id="dish_men", min_values=1, max_values=len(user_dic['selactable_dislis'])))
+		actRow2 = ActionRow(interactions.StringSelectMenu(*user_dic['selactable_dislis'], placeholder=user_dic['selected_dish'], custom_id="dish_men", min_values=1, max_values=1))
 	except KeyError:
 		actRow2 = ActionRow(interactions.StringSelectMenu(*list(res_data[list(res_data.keys())[-1]].keys()), placeholder="Choose to Buy what ?", custom_id="dish_men", min_values=1, max_values=1))
-		# actRow2 = ActionRow(interactions.StringSelectMenu(*list(res_data[list(res_data.keys())[-1]].keys()), placeholder="Choose to Buy what ?", custom_id="dish_men", min_values=1, max_values=len(list(res_data[list(res_data.keys())[-1]].keys()))))
 	actRow3 = ActionRow(interactions.StringSelectMenu(['1', '2', '3', '4', '5'], placeholder=f"{choice}", custom_id="dish_cou", min_values=1, max_values=1))
 	actRow4 = ActionRow(add2cart_button, remove_from_cart_button)
 	components=[actRow0, actRow1, actRow2, actRow3, actRow4]
+	user_doc.set({'selected_count':int(choice)}, merge=True)
 	await ctx.edit_origin(content=f"Selected Dishes will be added/removed {choice} times to your cart", components=components)
 
 @interactions.component_callback("a2c_button")
@@ -664,37 +646,34 @@ async def a2c_callback(ctx):
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	user_dic = user_doc.get().to_dict()
 	res_change=False
-	if user_dic['selected_dishes'] is not None:
-		new_cart_res = None
+	if 'selected_dish' in user_dic and user_dic['selected_dish'] is not None:
+		if user_dic['cart_res'] != user_dic['selected_res']:
+			user_dic['cart']={}
+			user_dic['cart_res']=user_dic['selected_res']
+			res_change=True
+			print('restraunt changed')
 		try:
-			if user_dic['cart_res'] != user_dic['selected_res']:
-				user_dic['cart']={}
-				user_doc.set({'cart_res':user_dic['selected_res'], 'cart': user_dic['cart'], 'selected_count':1}, merge=True)
-				# await ctx.edit_origin(content =f"Selected Restraunt is changed to {user_dic['selected_res']}. Cart Cleared.")
-				res_change=True
-			for x in user_dic['selected_dishes']:
-				try:
-					user_dic['cart'][f"{x}"] += user_dic['selected_count']
-				except KeyError as e:
-					if str(e)==f"'{x}'":
-						user_dic['cart'][f"{x}"] = user_dic['selected_count']
-					elif e=='selected_count':
-						user_dic['cart'][f"{x}"] = 1
-					else:
-						print(e, type(e), x)
-		except KeyError:
-			print("restraunt changed")
+			if 'selected_count' in user_dic:
+				user_dic['cart'][user_dic['selected_dish']] += user_dic['selected_count']
+			else:	
+				user_dic['cart'][user_dic['selected_dish']] += 1
+		except KeyError as e:
+				user_dic['cart'][user_dic['selected_dish']] = 1
 		###############
 		cart=user_dic['cart']
 		cart_res=user_dic['selected_res']
 		menu_col = db.collection("Menu")
-		embed = interactions.Embed(title="Cart View", description=f"Cart Size: {len(cart)}", color=0xFAD35C)
+		embed = interactions.Embed(title="Cart View", 
+			# description=f"{len(cart)} items currently in cart",
+			color=0xFAD35C)
 		embed.set_author(name=ctx.user.username, icon_url=ctx.user.avatar.url)
 		if len(cart)!=0:
 			embed.set_thumbnail(url=f"https://placehold.co/128x128/FAD35C/000000.png?text={cart_res}") ########## A2C
 		tot_cost=0
+		tot_size=0
+		dish_dic = menu_col.document(cart_res).get().to_dict()
 		for x in cart:
-			dish_data = menu_col.document(cart_res).get().to_dict()[x]
+			dish_data = dish_dic[x]
 			avail = "✅" if dish_data[1] else "🔴"
 			embed.add_field(
 				name=f"{x} [{cart[x]}]",
@@ -702,35 +681,39 @@ async def a2c_callback(ctx):
 				inline=False,
 			)
 			tot_cost+=dish_data[0]*cart[x]
+			tot_size+=cart[x]
+		embed.description = f"{tot_size} items currently in cart"
 		embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
-		user_doc.set({'cart':user_dic['cart'], 'cart_res':new_cart_res, 'cart_total': tot_cost}, merge=True)
+		user_doc.set({'cart':user_dic['cart'], 'cart_res':user_dic['cart_res'], 'cart_total': tot_cost}, merge=True)
 		if res_change:
 			await ctx.edit_origin(content =f"Selected Restraunt is changed to {user_dic['selected_res']}. Cart Cleared.", embed=embed)
 		else:
 			await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
 	else:
-		await ctx.send(f"<@{ctx.user.id}>\n ‼ Please select Product to add to cart.", ephemeral=True)
+		await ctx.channel.send(f"<@{ctx.user.id}>\n 💢 Please select Product to add to cart.", ephemeral=True, delete_after=2)
 
 @interactions.component_callback("r2c_button")
 async def r2c_callback(ctx):
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	user_dic = user_doc.get().to_dict()
-	for x in user_dic['selected_dishes']:
-		try:
-			user_dic['cart'][f"{x}"] -= user_dic['selected_count']
-			if user_dic['cart'][f"{x}"] <= 0:
-				user_dic['cart'][f"{x}"] = firestore.DELETE_FIELD
-		except KeyError as e:
-			await ctx.send(f"{user_dic['selected_dishes']} is not in cart to remove", delete_after=2, ephemeral=True)
-			return
+	if user_dic['selected_count']==None:
+		user_dic['selected_count']=1
+	try:
+		user_dic['cart'][user_dic['selected_dish']] -= user_dic['selected_count']
+		if user_dic['cart'][user_dic['selected_dish']] <= 0:
+			user_dic['cart'][user_dic['selected_dish']] = firestore.DELETE_FIELD
+	except KeyError as e:
+		await ctx.send(f"{user_dic['selected_dish']} is not in cart to remove", delete_after=2, ephemeral=True)
+		return
 	cart=user_dic['cart']
 	cart_res=user_dic['selected_res']
 	menu_col = db.collection("Menu")
-	embed = interactions.Embed(title="Cart View", description=f"Cart Size: {len(cart)}", color=0xFAD35C)
+	embed = interactions.Embed(title="Cart View", description=f"{len(cart)} items currently in cart", color=0xFAD35C)
 	embed.set_author(name=ctx.user.username, icon_url=ctx.user.avatar.url)
 	if len(cart)!=0:
 		embed.set_thumbnail(url=f"https://placehold.co/128x128/FAD35C/000000.png?text={cart_res}") ########## A2C
 	tot_cost=0
+	tot_size=0
 	dish_res = menu_col.document(cart_res).get().to_dict()
 	for x in cart:
 		try:
@@ -742,8 +725,10 @@ async def r2c_callback(ctx):
 				inline=False,
 			)
 			tot_cost+=dish_data[0]*cart[x]
-		except:
-			pass
+			tot_size+=cart[x]
+		except Exception as e:
+			print(type(e), e)
+	embed.description = f"{tot_size} items currently in cart"
 	user_doc.set({'cart':user_dic['cart'], 'cart_total':tot_cost}, merge=True)
 	embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
 	await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
@@ -793,9 +778,10 @@ async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_t
 		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button")
 		userDmRow = ActionRow(update_button, canc_button)
 		user_dm = ctx.user.fetch_dm()
-		user_dm.send("You have ordered this", components=[userDmRow])
-		ord_chan_message = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button, dec_button_chan])
-		ord_details={'customer':ctx.user.id, 'drop':drop_text, 'instruction':inst_text, 'requestees':requested_users_id_msgs}
+		user_dm_msg = user_dm.send("You have ordered this", components=[userDmRow])
+		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button, dec_button_chan])
+		ord_details={'customer':ctx.user.id, 'drop':drop_text, 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
+						'user_dm_msgid': user_dm_msg.id, 'ord_chan_msgid':ord_chan_msg.id}
 		orders_doc.set({ord_no: ord_details}, merge=True)
 		await modal_ctx.send("Fetching the Perfect person for you.")
 	except Exception as e:
@@ -825,11 +811,23 @@ async def clear_button_callback(ctx: interactions.ComponentContext):
 
 
 @interactions.component_callback("acc_button")
-async def clear_button_callback(ctx: interactions.ComponentContext):
+async def acc_button_callback(ctx: interactions.ComponentContext):
 	await ctx.send("Accept Button")
 
-@interactions.component_callback("acc_button")
-async def clear_button_callback(ctx: interactions.ComponentContext):
+@interactions.component_callback("dec_button")
+async def dec_button_callback(ctx: interactions.ComponentContext):
 	await ctx.send("Decline Button")
+
+@interactions.component_callback("dec_button_chan")
+async def dec_button_chan_callback(ctx: interactions.ComponentContext):
+	await ctx.send("Decline Button channel")
+
+@interactions.component_callback("upd_button")
+async def upd_button_callback(ctx: interactions.ComponentContext):
+	await ctx.send("Update Button")
+
+@interactions.component_callback("canc_button")
+async def canc_button_callback(ctx: interactions.ComponentContext):
+	await ctx.send("Cancel Button")
 
 bot.start()
