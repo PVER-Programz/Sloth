@@ -148,6 +148,7 @@ async def cmd_usrid(ctx: interactions.SlashContext, can_deliver: bool):
 async def profile_edit(ctx: interactions.SlashContext, name=None, phone_number=None, upi_id=None, hosteller=None, gender=None):
 	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 	guild_member = await guild.fetch_member(ctx.user.id)
+	params = [name, phone_number, upi_id, hosteller, gender]
 	try:
 		member_roles = [role.id for role in guild_member.roles]
 	except AttributeError:
@@ -204,7 +205,7 @@ async def profile_edit(ctx: interactions.SlashContext, name=None, phone_number=N
 			#hosteller - stance
 			if response!="":
 				await ctx.send(response, ephemeral=True)
-			if name == None and phone_number == None and upi_id == None and hosteller == None and gender == None:
+			if params[0] == None and params[1] == None and params[2] == None and params[3] == None and params[4] == None:
 				await ctx.send("Use </profile page:1385296092232552570> to view Profile")
 			else:
 				await ctx.send(f"{ctx.user.mention} ✅ Your profile has been updated successfully!")
@@ -260,7 +261,7 @@ async def profile_view(ctx: interactions.SlashContext):
 	)
 	embed.add_field(
 		name="Stance",
-		value="Hosteller" if user_data['hosteller'] else "Dayscholar",
+		value="Hosteller" if user_data['hosteller'] else "None" if user_data['hosteller']==None else "Dayscholar",
 		inline=True,
 	)
 	embed.add_field(
@@ -736,7 +737,7 @@ async def r2c_callback(ctx):
 
 @interactions.component_callback("buy_button")
 async def buy_button_callback(ctx: interactions.ComponentContext):
-	ph = rand(["It's my Lunch. Bring ASAP Please.", "Drop by 2 PM.", "Don't forget ketchup", "Enjoy extra tips", "2 More Spoons please"])
+	ph = rand(["It's my Lunch. Bring ASAP Please.", "Drop by 2 PM.", "Don't forget ketchup", "Enjoy extra tips", "Bring 2 More Spoons please"])
 	ord_modal = interactions.Modal(
 		interactions.ShortText(label="Drop Point Room no.", custom_id="drop_text", required=True, placeholder="Example: AB-1 708"),
 		interactions.ParagraphText(label="Delivery Instructions", custom_id="inst_text", placeholder=f"Eg: {ph}", required=False),
@@ -749,22 +750,22 @@ async def buy_button_callback(ctx: interactions.ComponentContext):
 	elif user_data['profile_completion'] > 90:
 		await ctx.send_modal(modal=ord_modal)
 	else:
-		await ctx.send(f"{ctx.user.mention}\n📉 Your profile is not Complete. Complete Your profile using </profile edit:1385296092232552570>.\nCurrent Profile Completion: **{user_data['profile_completion']}**%")
+		await ctx.send(f"{ctx.user.mention}\n📉 Your profile is not Complete. Complete Your profile using </profile edit:1385296092232552570> to place order.\nCurrent Profile Completion: **{user_data['profile_completion']}**%")
 
 
 @interactions.modal_callback("ord_modal")
 async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_text: str):
-	ord_no = int(time.time())
-	orders_doc = db.collection("orders").document('open')
+	await ctx.defer()
+	ord_no = str(int(time.time()))
+	order_doc = db.collection("orders").document(ord_no)
 	try:
 		users_ref = db.collection('Users')
 		query = users_ref.where('can_deli', '==', True).stream()
 		requested_users_id_msgs = {}
 		acc_button = Button(style=ButtonStyle.GREEN, label="Accept", custom_id="acc_button")
 		dec_button = Button(style=ButtonStyle.DANGER, label="Decline", custom_id="dec_button")
-		dec_button_chan = Button(style=ButtonStyle.DANGER, label="Decline", custom_id="dec_button_chan")
 		for doc in query:
-			if doc.id != ctx.user.id:
+			if str(doc.id) != str(ctx.user.id):
 				guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 				guild_member = await guild.fetch_member(int(doc.id))
 				if guild_member!=None:
@@ -777,13 +778,13 @@ async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_t
 		update_button = Button(style=ButtonStyle.PRIMARY, label="Order Status", custom_id="upd_button")
 		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button")
 		userDmRow = ActionRow(update_button, canc_button)
-		user_dm = ctx.user.fetch_dm()
-		user_dm_msg = user_dm.send("You have ordered this", components=[userDmRow])
-		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button, dec_button_chan])
+		user_dm = await ctx.user.fetch_dm()
+		user_dm_msg = await user_dm.send("You have ordered this", components=[userDmRow])
+		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button])
 		ord_details={'customer':ctx.user.id, 'drop':drop_text, 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
-						'user_dm_msgid': user_dm_msg.id, 'ord_chan_msgid':ord_chan_msg.id}
-		orders_doc.set({ord_no: ord_details}, merge=True)
-		await modal_ctx.send("Fetching the Perfect person for you.")
+						'user_dm_msgid': user_dm_msg.id, 'ord_chan_msgid':ord_chan_msg.id, 'status': 'open'}
+		order_doc.set(ord_details, merge=True)
+		await ctx.send(f"{ctx.user.mention} Placed an Order \nFetching the Perfect person for you. Please wait until someone accepts to deliver your order.")
 	except Exception as e:
 		print(type(e), e)
 		await ctx.send(f"ERROR Occured")
@@ -817,10 +818,6 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 @interactions.component_callback("dec_button")
 async def dec_button_callback(ctx: interactions.ComponentContext):
 	await ctx.send("Decline Button")
-
-@interactions.component_callback("dec_button_chan")
-async def dec_button_chan_callback(ctx: interactions.ComponentContext):
-	await ctx.send("Decline Button channel")
 
 @interactions.component_callback("upd_button")
 async def upd_button_callback(ctx: interactions.ComponentContext):
