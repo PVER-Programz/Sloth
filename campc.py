@@ -6,7 +6,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 import math
 import time
-import mial
+# import mial
 import requests
 from random import choice as rand
 import json
@@ -94,7 +94,7 @@ async def cmd_usrid(ctx: interactions.SlashContext, can_deliver: bool):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		user_doc = db.collection("Users").document(str(ctx.user.id))
 		if user_doc.get().exists:
@@ -155,7 +155,7 @@ async def profile_edit(ctx: interactions.SlashContext, name=None, phone_number=N
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		# try:
 			user_doc_ref = db.collection("Users").document(str(ctx.user.id))
@@ -222,7 +222,7 @@ async def profile_view(ctx: interactions.SlashContext):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 		return
 	else:
 		user_doc_ref = db.collection("Users").document(str(ctx.user.id))
@@ -285,11 +285,16 @@ async def profile_view(ctx: interactions.SlashContext):
 		inline=False,
 	)
 	if "@" in user_data['upi'] and " " not in user_data['upi'].strip():
-		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={user_data['upi']}")
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data=upi://pay?pa={user_data['upi']}")
 	else:
 		embed.set_image(url=f"https://placehold.co/600x300/FF0000/FFFFFF.png?text=UPI_not_set")
 	await ctx.send(embed=embed, ephemeral=True)
 
+registerBtn = Button(
+	custom_id="register_btn",
+	style=ButtonStyle.PRIMARY,
+	label="Register",
+)
 
 connectBtn = Button(
 	custom_id="connect_btn",
@@ -304,15 +309,16 @@ gmailBtn = Button(
 )
 
 @interactions.slash_command(name="register", description="Register for first time user")
-async def register(ctx: interactions.SlashContext):
-	reg_modal = interactions.Modal(
-		interactions.ShortText(label="Your VIT Email", custom_id="reg_short_text"),
-		title="Register User",
-		custom_id="reg_modal",
-	)
-	await ctx.send_modal(modal=reg_modal)
-	modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(reg_modal)
-	email = modal_ctx.responses["reg_short_text"]
+@interactions.slash_option(
+	name="vit_email",
+	description="Enter your VIT Email (@vitstudent.ac.in)",
+	required=True,
+	opt_type=interactions.OptionType.STRING,
+	min_length=20
+)
+async def register(ctx: interactions.SlashContext, vit_email: str):
+	email = vit_email
+	await ctx.defer()
 	if email.strip().endswith("@vitstudent.ac.in"):
 		users_collection = db.collection("Users")
 		try:
@@ -325,58 +331,122 @@ async def register(ctx: interactions.SlashContext):
 				disids=disids+f"<@{x.id}>"
 				id_count=id_count+1
 			if id_count>0:
-				await modal_ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
+				await ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
 			else:
 				if send_reset_link(email):
-					await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn])
+					await ctx.send("Check your email for a password reset link. Set your password and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
 				else:
-					await modal_ctx.send("Registration ERROR: Unable to send verification mail.")
+					await ctx.send("Registration ERROR: Unable to send verification mail.")
 				# link = auth.generate_password_reset_link(email)
-				# await modal_ctx.send(f"user {user.uid} \n link {link}", components=[gmailBtn, connectBtn])
+				# await ctx.send(f"user {user.uid} \n link {link}", components=[gmailBtn, connectBtn])
 		except auth.UserNotFoundError:
 			user = auth.create_user(email=email,password=email[::-1])
 			if send_reset_link(email):
-				await modal_ctx.send("Check your email for a password reset link. Set your passwaord as your discord username and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn])
+				await ctx.send("Check your email for a password reset link. Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
 			else:
-				await modal_ctx.send("Registration ERROR: Unable to send verification mail.")
-			# link = auth.generate_password_reset_link(email)
-			# message = await modal_ctx.send(f"user {user.uid} \n link {link}", components=[gmailBtn, connectBtn])
+				await ctx.send("Registration ERROR: Unable to send verification mail.")
 		except:
 			await ctx.send("ERROR Occured. Please Try Again")
 	else:
-		await modal_ctx.send("Use VIT student email.")
+		await ctx.send("Use VIT student email.")
+
+@interactions.component_callback("register_btn")
+async def component_register(ctx: interactions.ComponentContext):
+	reg_modal = interactions.Modal(
+		interactions.ShortText(label="Enter your VIT Email", custom_id="reg_short_text", min_length=20),
+		title="Register User",
+		custom_id="reg_modal",
+	)
+	await ctx.send_modal(modal=reg_modal)
+
+
+@interactions.modal_callback("reg_modal")
+async def reg_modal_response(ctx: interactions.ModalContext, reg_short_text: str):
+	email = reg_short_text
+	print('here')
+	await ctx.defer()
+	if email.strip().endswith("@vitstudent.ac.in"):
+		users_collection = db.collection("Users")
+		try:
+			user = auth.get_user_by_email(email)
+			query = users_collection.where("email", "==", email)
+			res=query.stream()
+			disids = " "
+			id_count=0
+			for x in res:
+				disids=disids+f"<@{x.id}>"
+				id_count=id_count+1
+			if id_count>0:
+				await ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
+			else:
+				if send_reset_link(email):
+					await ctx.send("Check your email for a password reset link. Set your password and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
+				else:
+					await ctx.send("Registration ERROR: Unable to send verification mail.")
+				# link = auth.generate_password_reset_link(email)
+				# await ctx.send(f"user {user.uid} \n link {link}", components=[gmailBtn, connectBtn])
+		except auth.UserNotFoundError:
+			user = auth.create_user(email=email,password=email[::-1])
+			if send_reset_link(email):
+				await ctx.send("Check your email for a password reset link. Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
+			else:
+				await ctx.send("Registration ERROR: Unable to send verification mail.")
+		except:
+			await ctx.send("ERROR Occured. Please Try Again")
+	else:
+		await ctx.send("Use VIT student email.")
+
+
 
 
 @interactions.slash_command(name="connect", description="Verifies your discord so that you can place orders")
 async def connect(ctx: interactions.SlashContext):
 	con_modal = interactions.Modal(
-		interactions.ShortText(label="Re-Enter your VIT Email", custom_id="con_short_text"),
+		interactions.ShortText(label="Enter your VIT Email", custom_id="con_short_text", min_length=20),
+		interactions.ShortText(label="Enter the password", custom_id="pwd_text", placeholder="Check your mail for password reset link.", min_length=6),
+		title="Register User",
+		custom_id="con_modal",
+	)
+
+	await ctx.send_modal(modal=con_modal)
+	# modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(con_modal)
+
+@interactions.component_callback("connect_btn")
+async def component_connect(ctx: interactions.ComponentContext):
+	con_modal = interactions.Modal(
+		interactions.ShortText(label="Enter your VIT Email", custom_id="con_short_text", min_length=20),
+		interactions.ShortText(label="Enter the password", custom_id="pwd_text", placeholder="Check your mail for password reset link.", min_length=6),
 		title="Register User",
 		custom_id="con_modal",
 	)
 	await ctx.send_modal(modal=con_modal)
-	modal_ctx: interactions.ModalContext = await ctx.bot.wait_for_modal(con_modal)
-	email = modal_ctx.responses["con_short_text"]
+
+@interactions.modal_callback("con_modal")
+async def con_modal_response(modal_ctx: interactions.ModalContext, con_short_text: str, pwd_text: str):
+	email = con_short_text
+	password = pwd_text
+	await modal_ctx.defer()
 	users_collection = db.collection("Users")
-	if users_collection.document(str(ctx.user.id)).get().exists:
+	if users_collection.document(str(modal_ctx.user.id)).get().exists:
 		await modal_ctx.send("🤡 User already connected")
 	else:
 		if email.strip().endswith("@vitstudent.ac.in"):
 			try:
-				testuser = auth.get_user_by_email(email)
-				if sign_in_with_email_and_password(email, ctx.user.username):
-					dis_uid=ctx.user.id
-					member = ctx.guild.get_member(dis_uid)
-					user_data = {"email": email, "username": ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{}, 'cart_res':None,
+				trigger_except_block = auth.get_user_by_email(email)
+				if sign_in_with_email_and_password(email, password):
+					dis_uid = modal_ctx.user.id
+					guild = await bot.fetch_guild(ids_json['server_id'])
+					member = guild.get_member(dis_uid)
+					user_data = {"email": email, "username": modal_ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{}, 'cart_res':None,
 								"name": email[:email.index('@')], "phone": '0000000000', "upi": "not_set", "profile_completion": int((1/6)*100),
 								"gender": None, "hosteller": None}
-					users_collection.document(str(ctx.user.id)).set(user_data)
+					users_collection.document(str(modal_ctx.user.id)).set(user_data)
 					await member.add_role(ids_json['veri_role'])
 					await modal_ctx.send(f"<@{dis_uid}> Just got Verified 🏆\n\nUse </profile page:1385296092232552570> to view your profile.")
 				else:
-					await modal_ctx.send("Unable Verify. If this Email is registered, check mail for password reset link. Set your passwaord as your discord username and then retry.")
+					await modal_ctx.send("Unable to Verify. If this Email is registered, check mail for password reset link. Set your password and then retry.")
 			except auth.UserNotFoundError:
-				await modal_ctx.send("Invalid Email: This Email is not registered.")
+				await modal_ctx.send("Invalid Email: This Email is not registered. Use </register:1385296092232552573> to register", components=registerBtn)
 		else:
 			await modal_ctx.send("Use VIT student email.")
 
@@ -484,7 +554,7 @@ async def cart_view(ctx: interactions.SlashContext):
 		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Clcik </register:1385296092232552573>")
+		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		restraunts = db.collection("Menu").stream()
 		res_data = {}
@@ -562,7 +632,6 @@ async def cart_view(ctx: interactions.SlashContext):
 		message = await ctx.send("Use </menu:1385296092232552569> to view available dishes to order", embed=embed, components=[actRow0, actRow1, actRow2, actRow3, actRow4], ephemeral=True)
 
 
-# global_users = {}
 
 @interactions.component_callback("res_men")
 async def res_men_callback(ctx):
@@ -643,55 +712,63 @@ async def dish_cou_callback(ctx):
 
 @interactions.component_callback("a2c_button")
 async def a2c_callback(ctx):
-	await ctx.defer(edit_origin=True)
-	user_doc = db.collection("Users").document(str(ctx.user.id))
-	user_dic = user_doc.get().to_dict()
-	res_change=False
-	if 'selected_dish' in user_dic and user_dic['selected_dish'] is not None:
-		if user_dic['cart_res'] != user_dic['selected_res']:
-			user_dic['cart']={}
-			user_dic['cart_res']=user_dic['selected_res']
-			res_change=True
-			print('restraunt changed')
-		try:
-			if 'selected_count' in user_dic:
-				user_dic['cart'][user_dic['selected_dish']] += user_dic['selected_count']
-			else:	
-				user_dic['cart'][user_dic['selected_dish']] += 1
-		except KeyError as e:
-				user_dic['cart'][user_dic['selected_dish']] = 1
-		###############
-		cart=user_dic['cart']
-		cart_res=user_dic['selected_res']
-		menu_col = db.collection("Menu")
-		embed = interactions.Embed(title="Cart View", 
-			# description=f"{len(cart)} items currently in cart",
-			color=0xFAD35C)
-		embed.set_author(name=ctx.user.username, icon_url=ctx.user.avatar.url)
-		if len(cart)!=0:
-			embed.set_thumbnail(url=f"https://placehold.co/128x128/FAD35C/000000.png?text={cart_res}") ########## A2C
-		tot_cost=0
-		tot_size=0
-		dish_dic = menu_col.document(cart_res).get().to_dict()
-		for x in cart:
-			dish_data = dish_dic[x]
-			avail = "✅" if dish_data[1] else "🔴"
-			embed.add_field(
-				name=f"{x} [{cart[x]}]",
-				value=f"""Cost: ₹{dish_data[0]} - Availablity: {avail}""",
-				inline=False,
-			)
-			tot_cost+=dish_data[0]*cart[x]
-			tot_size+=cart[x]
-		embed.description = f"{tot_size} items currently in cart"
-		embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
-		user_doc.set({'cart':user_dic['cart'], 'cart_res':user_dic['cart_res'], 'cart_total': tot_cost}, merge=True)
-		if res_change:
-			await ctx.edit_origin(content =f"Selected Restraunt is changed to {user_dic['selected_res']}. Cart Cleared.", embed=embed)
+	try:
+		await ctx.defer(edit_origin=True)
+		user_doc = db.collection("Users").document(str(ctx.user.id))
+		user_dic = user_doc.get().to_dict()
+		res_change=False
+		if 'selected_dish' in user_dic and user_dic['selected_dish'] is not None:
+			if user_dic['cart_res'] != user_dic['selected_res']:
+				user_dic['cart']={}
+				user_dic['cart_res']=user_dic['selected_res']
+				res_change=True
+				print('restraunt changed')
+			try:
+				if user_dic['selected_count']!=None and user_dic['selected_dish'] in user_dic['cart']:
+					user_dic['cart'][user_dic['selected_dish']] += user_dic['selected_count']
+				elif user_dic['selected_count']==None and user_dic['selected_dish'] in user_dic['cart']:	
+					user_dic['cart'][user_dic['selected_dish']] += 1
+				elif user_dic['selected_count']!=None and user_dic['selected_dish'] not in user_dic['cart']:
+					user_dic['cart'][user_dic['selected_dish']] = user_dic['selected_count']
+				elif user_dic['selected_count']==None and user_dic['selected_dish'] not in user_dic['cart']:	
+					user_dic['cart'][user_dic['selected_dish']] = 1
+			except KeyError as e:
+				print(f"key error {e}")
+			###############
+			cart=user_dic['cart']
+			cart_res=user_dic['selected_res']
+			menu_col = db.collection("Menu")
+			embed = interactions.Embed(title="Cart View", 
+				# description=f"{len(cart)} items currently in cart",
+				color=0xFAD35C)
+			embed.set_author(name=ctx.user.username, icon_url=ctx.user.avatar.url)
+			if len(cart)!=0:
+				embed.set_thumbnail(url=f"https://placehold.co/128x128/FAD35C/000000.png?text={cart_res}") ########## A2C
+			tot_cost=0
+			tot_size=0
+			dish_dic = menu_col.document(cart_res).get().to_dict()
+			for x in cart:
+				dish_data = dish_dic[x]
+				avail = "✅" if dish_data[1] else "🔴"
+				embed.add_field(
+					name=f"{x} [{cart[x]}]",
+					value=f"""Cost: ₹{dish_data[0]} - Availablity: {avail}""",
+					inline=False,
+				)
+				tot_cost+=dish_data[0]*cart[x]
+				tot_size+=cart[x]
+			embed.description = f"{tot_size} items currently in cart"
+			embed.set_footer(text=f"Total Cost: ₹{tot_cost}")
+			user_doc.set({'cart':user_dic['cart'], 'cart_res':user_dic['cart_res'], 'cart_total': tot_cost}, merge=True)
+			if res_change:
+				await ctx.edit_origin(content =f"Selected Restraunt is changed to {user_dic['selected_res']}. Cart Cleared.", embed=embed)
+			else:
+				await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
 		else:
-			await ctx.edit_origin(content="Use </menu:1385296092232552569> to view available dishes to order", embed=embed)	
-	else:
-		await ctx.channel.send(f"<@{ctx.user.id}>\n 💢 Please select Product to add to cart.", ephemeral=True, delete_after=2)
+			await ctx.channel.send(f"<@{ctx.user.id}>\n 💢 Please select Product to add to cart.", ephemeral=True, delete_after=2)
+	except Exception as e:
+		print(type(e), e)
+		await ctx.send("Error Occured.")
 
 @interactions.component_callback("r2c_button")
 async def r2c_callback(ctx):
