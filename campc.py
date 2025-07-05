@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import interactions
 from interactions import Button, ButtonStyle, ActionRow
 from interactions.ext.paginators import Paginator
@@ -21,6 +23,7 @@ with open("discord_ids.json", 'r') as f:
 
 
 bot = interactions.Client(token=TOKEN)
+# bot.load_extension("interactions.ext.jurigged")
 
 try:
 	cred = credentials.Certificate("gservice.json")
@@ -70,6 +73,22 @@ def send_reset_link(EMAIL):
 			print(f"Response body: {response.text}")
 		return False
 
+def payable(amt, src, dst, nfi, other_dest=False):
+	fee = (((src+dst)/10000)*amt)
+	price=amt+fee
+	if price>200:
+		price=price+nfi
+	if other_dest:
+		price=price+10
+	if price<50:
+		base=3
+		price=price+base
+	percent = (amt/price)*100
+	print(amt, src, dst, nfi)
+	print("fee:", fee, 'price:', price)
+	return [price, fee, percent]
+
+
 
 @interactions.listen()
 async def on_ready():
@@ -91,10 +110,10 @@ async def cmd_usrid(ctx: interactions.SlashContext, can_deliver: bool):
 	try:
 		member_roles = [role.id for role in guild_member.roles]
 	except AttributeError:
-		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
+		await ctx.send("😵 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
+		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		user_doc = db.collection("Users").document(str(ctx.user.id))
 		if user_doc.get().exists:
@@ -152,10 +171,10 @@ async def profile_edit(ctx: interactions.SlashContext, name=None, phone_number=N
 	try:
 		member_roles = [role.id for role in guild_member.roles]
 	except AttributeError:
-		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
+		await ctx.send("😵 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
+		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		# try:
 			user_doc_ref = db.collection("Users").document(str(ctx.user.id))
@@ -219,10 +238,10 @@ async def profile_view(ctx: interactions.SlashContext):
 	try:
 		member_roles = [role.id for role in guild_member.roles]
 	except AttributeError:
-		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
+		await ctx.send("😵 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
+		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 		return
 	else:
 		user_doc_ref = db.collection("Users").document(str(ctx.user.id))
@@ -551,10 +570,10 @@ async def cart_view(ctx: interactions.SlashContext):
 	try:
 		member_roles = [role.id for role in guild_member.roles]
 	except AttributeError:
-		await ctx.send("🚫 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
+		await ctx.send("😵 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
 		return
 	if ids_json['veri_role'] not in member_roles:
-		await ctx.send(f"🚫 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
+		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 	else:
 		restraunts = db.collection("Menu").stream()
 		res_data = {}
@@ -814,13 +833,37 @@ async def r2c_callback(ctx):
 
 @interactions.component_callback("buy_button")
 async def buy_button_callback(ctx: interactions.ComponentContext):
+	await ctx.defer(ephemeral=True)
+	dests = db.collection('Distance').document('destination').get().to_dict()
+	dest_list = sorted(list(dests.keys())) + ["Others"]
+	drop_men = interactions.StringSelectMenu(*dest_list, placeholder='Select Drop location', custom_id="dest_men", min_values=1, max_values=1)
+	await ctx.send(content="Select Drop off location", components=drop_men, ephemeral=True)
+
+@interactions.component_callback("dest_men")
+async def dest_men_callback(ctx):
+	if ctx.values[0] != "Others":
+		loc = ctx.values[0]
+		# await ctx.edit_origin(content='Thank You', components=[])
+	else:
+		loc=None
+		# await ctx.edit_origin(content='Custom drop locations will be charged 10rs delivery fee', components=[])
 	ph = rand(["It's my Lunch. Bring ASAP Please.", "Drop by 2 PM.", "Don't forget ketchup", "Enjoy extra tips", "Bring 2 More Spoons please"])
-	ord_modal = interactions.Modal(
-		interactions.ShortText(label="Drop Point Room no.", custom_id="drop_text", required=True, placeholder="Example: AB-1 708"),
-		interactions.ParagraphText(label="Delivery Instructions", custom_id="inst_text", placeholder=f"Eg: {ph}", required=False),
-		title=f"Final details for Order",
-		custom_id="ord_modal",
-	)
+	if loc!=None:
+		ord_modal = interactions.Modal(
+			interactions.ShortText(label="Drop Point Room no.", custom_id="drop_text", required=True, placeholder="Example: 708"),
+			interactions.ShortText(label="Drop Location", custom_id="drop_dest", required=True, value=loc),
+			interactions.ParagraphText(label="Delivery Instructions", custom_id="inst_text", placeholder=f"Eg: {ph}", required=False),
+			title=f"Final details for Order",
+			custom_id="ord_modal",
+		)
+	else:
+		ord_modal = interactions.Modal(
+			interactions.ShortText(label="Drop Point Room no.", custom_id="drop_text", required=False, placeholder="Example: AB-1 708"),
+			interactions.ShortText(label="Drop Location", custom_id="drop_dest", required=True, placeholder="Custom drop location will be charged extra", value=" "),
+			interactions.ParagraphText(label="Delivery Instructions", custom_id="inst_text", placeholder=f"Eg: {ph}", required=False),
+			title=f"Final details for Order",
+			custom_id="ord_modal",
+		)
 	user_data = db.collection('Users').document(str(ctx.user.id)).get().to_dict()
 	if user_data['cart'] == {}:
 		await ctx.send(f"{ctx.user.mention}\n🤕 Your Cart is empty")
@@ -831,15 +874,25 @@ async def buy_button_callback(ctx: interactions.ComponentContext):
 
 
 @interactions.modal_callback("ord_modal")
-async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_text: str):
+async def ord_modal_answer(ctx: interactions.ModalContext,  drop_text: str, inst_text: str, drop_dest=None):
 	await ctx.defer()
 	ord_no = str(int(time.time()))
 	order_doc = db.collection("orders").document(ord_no)
 	try:
 		users_ref = db.collection('Users')
+		dist_dict = db.collection('Distance').document('destination').get().to_dict()
+		src_dict = db.collection('Distance').document('source').get().to_dict()
 		query = users_ref.where('can_deli', '==', True).stream()
+		user_data = users_ref.document(str(ctx.user.id)).get().to_dict()
+		if drop_dest in dist_dict:
+			drop_params = [src_dict[user_data['cart_res']], dist_dict[drop_dest], False]
+			topay = payable(int(user_data['cart_total']), src_dict[user_data['cart_res']], dist_dict[drop_dest], sum(user_data['cart'].values()))
+		else:
+			drop_params = [src_dict[user_data['cart_res']], 500, True]
+			topay = payable(int(user_data['cart_total']), src_dict[user_data['cart_res']], 500, sum(user_data['cart'].values()), True)
 		requested_users_id_msgs = {}
 		acc_button = Button(style=ButtonStyle.GREEN, label="Accept", custom_id="acc_button")
+		viewDet_button = Button(style=ButtonStyle.SECONDARY, label="View Details", custom_id="viewdetails_button")
 		dec_button = Button(style=ButtonStyle.DANGER, label="Decline", custom_id="dec_button")
 		for doc in query:
 			if str(doc.id) != str(ctx.user.id):
@@ -847,8 +900,10 @@ async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_t
 				guild_member = await guild.fetch_member(int(doc.id))
 				if guild_member!=None:
 					member_dm = await guild_member.fetch_dm()
-					dm_message = await member_dm.send("Are you willing to deliver ?", components=[acc_button, dec_button])
-					requested_users_id_msgs[doc.id]=dm_message.id
+					add_text = f"{ctx.user.mention} needs your help\nOrder No. *[{ord_no}]*\nDrop-point: **{drop_dest} {drop_text}**\n{inst_text}"
+					add_text=add_text+f"\nEstimated delivery bonus: **{topay[2]:.2f}% - {topay[2]+10:.2f}%** of order value"
+					dm_message = await member_dm.send(f"{add_text}\n**Are you willing to deliver ?**", components=[acc_button, dec_button])
+					requested_users_id_msgs[str(doc.id)]=str(dm_message.id)
 					print("DMed:", guild_member.tag)
 				else:
 					print("Not member:", guild_member.tag)
@@ -856,10 +911,18 @@ async def on_modal_answer(ctx: interactions.ModalContext, drop_text: str, inst_t
 		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button")
 		userDmRow = ActionRow(update_button, canc_button)
 		user_dm = await ctx.user.fetch_dm()
-		user_dm_msg = await user_dm.send("You have ordered this", components=[userDmRow])
-		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *{ord_no}* \nDelivery to **{drop_text}**\n{inst_text}", components=[acc_button])
-		ord_details={'customer':ctx.user.id, 'drop':drop_text, 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
-						'user_dm_msgid': user_dm_msg.id, 'ord_chan_msgid':ord_chan_msg.id, 'status': 'open'}
+		cart_text=''
+		for x in user_data['cart']:
+			cart_text=f"{cart_text}{x} - {user_data['cart'][x]}\n"
+		embed = interactions.Embed(description=cart_text, color=0xFAD35C)
+		embed.add_field(name=f"Net Payable Amount", value=f"₹ ~~{topay[0]+10:.2f}~~  ₹{topay[0]:.2f}", inline=False)
+		user_dm_msg = await user_dm.send(f"Order No. *[{ord_no}]* \nYou have placed order for\n", embed=embed, components=[userDmRow])
+		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *[{ord_no}]* \nDelivery to **{drop_dest} {drop_text}**\n{inst_text}", components=[acc_button, viewDet_button])
+		ord_details={'customer':str(ctx.user.id), 'drop':[drop_dest,drop_text], 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
+					'user_dm_msgid': str(user_dm_msg.id), 'ord_chan_msgid':str(ord_chan_msg.id), 'status': 'open', 'cart':user_data['cart'],
+					'cart_total': user_data['cart_total'], 'cart_res':user_data['cart_res'], 'topay':topay[0], 
+					'half_pay_1': False, 'half_pay_2': False, 'drop_params': drop_params}
+		print("\nOrder details db write:\n", ord_details, "\n")
 		order_doc.set(ord_details, merge=True)
 		await ctx.send(f"{ctx.user.mention} Placed an Order \nFetching the Perfect person for you. Please wait until someone accepts to deliver your order.")
 	except Exception as e:
@@ -887,14 +950,106 @@ async def clear_button_callback(ctx: interactions.ComponentContext):
 	except:
 		await ctx.send("ERROR: Unable to Clear Cart")
 
+canceledBtn = Button(
+	custom_id="cancelled_btn",
+	style=ButtonStyle.SECONDARY,
+	label="Cancelled",
+	disabled=True,
+	emoji="❌"
+)
+
+acceptedBtn = Button(
+	custom_id="accepted_btn",
+	style=ButtonStyle.SECONDARY,
+	label="Accepted",
+	disabled=True,
+	emoji="👍"
+)
+
+
+declinedBtn = Button(
+	custom_id="cancelled_btn",
+	style=ButtonStyle.SECONDARY,
+	label="Declined",
+	disabled=True,
+	emoji="🗑️"
+)
+
 
 @interactions.component_callback("acc_button")
 async def acc_button_callback(ctx: interactions.ComponentContext):
-	await ctx.send("Accept Button")
+	await ctx.defer(ephemeral=True)
+	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+	guild_member = await guild.fetch_member(ctx.user.id)
+	try:
+		member_roles = [role.id for role in guild_member.roles]
+	except AttributeError:
+		await ctx.send("😵 You need to be member of main server to access this command.\nJoin: https://discord.gg/gDsbveRBDx")
+		return
+	if ids_json['veri_role'] not in member_roles:
+		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
+		return
+	else:
+		pc=db.collection('Users').document(str(ctx.user.id)).get().to_dict()['profile_completion']
+		if pc<90:
+			await ctx.send(f"{ctx.user.mention}\n📉 Your profile is not Complete. Complete Your profile using </profile edit:1385296092232552570> to accept orders.\nCurrent Profile Completion: **{pc}**%", delete_after=5)
+			return
+	cont=ctx.message.content
+	if str(cont[cont.index('<@')+2:cont.index('>')])!=str(ctx.user.id):
+		ord_no = cont[cont.index('[')+1:cont.index(']')]
+		doc_ref = db.collection('orders').document(ord_no)
+		doc_data = doc_ref.get().to_dict()
+			await ctx.message.edit(components=acceptedBtn)
+		if ctx.guild.id != None:
+			await bot.delete_message(channel_id=ids_json['order_channel'], message_id=doc_data['ord_chan_msgid'])
+		await ctx.send("🚀 Order Accepted", ephemeral=True, delete_after=2)
+		guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+		for requestee_id in doc_data['requestees']:
+			guild_member = await guild.fetch_member(requestee_id)
+			if guild_member!=None and requestee_id!=str(ctx.user.id):
+				member_dm = await guild_member.fetch_dm()
+				await member_dm.get_message(doc_data['requestees'][requestee_id]).delete()
+		deliverer = str(ctx.user.id)
+		doc_ref.set({'deliverer': deliverer, 'status':"due"}, merge=True)
+		guild_member = await guild.fetch_member(doc_data['customer'])
+		if guild_member!=None:
+			member_dm = await guild_member.fetch_dm()
+			await member_dm.send(f"Your order *[{ord_no}]* has been accepted by <@{deliverer}>")
+	else:
+		await ctx.send("Bro you dumb ? You cannot accept your own order..!!", ephemeral=True)
+
+
+@interactions.component_callback("viewdetails_button")
+async def viewDet_button_callback(ctx: interactions.ComponentContext):
+	await ctx.defer(ephemeral=True)
+	cont=ctx.message.content
+	ord_no = cont[cont.index('[')+1:cont.index(']')]
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	if str(doc_data['customer'])!=str(ctx.user.id):
+		topay = payable(int(doc_data['cart_total']), doc_data['drop_params'][0], doc_data['drop_params'][1], sum(doc_data['cart'].values()), doc_data['drop_params'][2])
+		add_text = f"Order No. *[{ord_no}]*\nDrop-point: **{doc_data['drop'][0]} {doc_data['drop'][1]}**\n{doc_data['instruction']}"
+		add_text=add_text+f"\nEstimated delivery bonus: **{topay[2]:.2f}% - {topay[2]+10:.2f}%** of order value"
+		await ctx.send(add_text, ephemeral=True)
+	else:
+		# print(str(doc_data['customer'])==str(ctx.user.id), str(doc_data['customer']), str(ctx.user.id))
+		guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+		guild_member = await guild.fetch_member(ctx.user.id)
+		if guild_member!=None:
+			cust_dm = await guild_member.fetch_dm()
+		link = cust_dm.get_message(doc_data['user_dm_msgid']).jump_url
+		await ctx.send(f"Details have been DMed to you\n{link}", ephemeral=True)
+
 
 @interactions.component_callback("dec_button")
 async def dec_button_callback(ctx: interactions.ComponentContext):
-	await ctx.send("Decline Button")
+	cont=ctx.message.content
+	ord_no = cont[cont.index('[')+1:cont.index(']')]
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	doc_data['requestees'][str(ctx.user.id)]=firestore.DELETE_FIELD
+	doc_ref.set({'requestees': doc_data['requestees']}, merge=True)
+	await ctx.edit_origin(components=declinedBtn)
 
 @interactions.component_callback("upd_button")
 async def upd_button_callback(ctx: interactions.ComponentContext):
@@ -902,6 +1057,25 @@ async def upd_button_callback(ctx: interactions.ComponentContext):
 
 @interactions.component_callback("canc_button")
 async def canc_button_callback(ctx: interactions.ComponentContext):
-	await ctx.send("Cancel Button")
+	cont=ctx.message.content
+	ord_no = cont[cont.index('[')+1:cont.index(']')]
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	if doc_data['status']=='open':
+		await ctx.edit_origin(components=canceledBtn)
+		await bot.get_channel(ids_json['order_channel']).get_message(doc_data['ord_chan_msgid']).edit(components=canceledBtn)
+		for requestee_id in doc_data['requestees']:
+			guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+			guild_member = await guild.fetch_member(requestee_id)
+			if guild_member!=None:
+				member_dm = await guild_member.fetch_dm()
+				await member_dm.get_message(doc_data['requestees'][requestee_id]).edit(components=canceledBtn)
+		doc_ref.set({'status': 'cancelled'}, merge=True)
+	else:
+		update_button = Button(style=ButtonStyle.PRIMARY, label="Order Status", custom_id="upd_button")
+		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button", disabled=True)
+		userDmRow = ActionRow(update_button, canc_button)
+		await ctx.edit_origin(components=userDmRow)
+		await ctx.send("It's too late to cancel now.")
 
 bot.start()
