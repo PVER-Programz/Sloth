@@ -8,10 +8,13 @@ import firebase_admin
 from firebase_admin import credentials, firestore, auth
 import math
 import time
-# import mial
 import requests
 from random import choice as rand
+import urllib.parse
+import re
 import json
+
+
 
 with open("tokens.json", 'r') as f:
 	tok_json = json.load(f)
@@ -20,6 +23,7 @@ FIREBASE_WEB_API_KEY = tok_json['gservice']
 
 with open("discord_ids.json", 'r') as f:
 	ids_json = json.load(f)
+
 
 
 bot = interactions.Client(token=TOKEN)
@@ -32,6 +36,7 @@ try:
 	db = firestore.client()
 except Exception as e:
 	print(f"Error initializing Database Admin SDK: {e}")
+
 
 
 def sign_in_with_email_and_password(email, password, return_secure_token=False):
@@ -81,12 +86,14 @@ def payable(amt, src, dst, nfi, other_dest=False):
 	if other_dest:
 		price=price+10
 	if price<50:
-		base=3
+		base=1
 		price=price+base
 	percent = (amt/price)*100
-	print(amt, src, dst, nfi)
-	print("fee:", fee, 'price:', price)
+	print(amt, src, dst, nfi, other_dest)
+	print("fee:", fee, 'price:', price, 'percent:', percent)
 	return [price, fee, percent]
+
+
 
 
 
@@ -95,6 +102,8 @@ async def on_ready():
 	print(f'{bot.user} has connected to Discord!')
 	await bot.get_channel(ids_json['ini_channel']).send(
 		f'{bot.user} has connected to Discord!')
+
+
 
 
 @interactions.slash_command(name="profile", sub_cmd_name="delivery_executive", sub_cmd_description="Do you wanna side hustle as a delivery executive ? You get bonus too bruh..")
@@ -654,6 +663,7 @@ async def cart_view(ctx: interactions.SlashContext):
 
 @interactions.component_callback("res_men")
 async def res_men_callback(ctx):
+	await ctx.defer(edit_origin=True)
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	choice = ctx.values[0]
 	dislis = list(db.collection("Menu").document(choice).get().to_dict().keys())
@@ -677,6 +687,7 @@ async def res_men_callback(ctx):
 
 @interactions.component_callback("dish_men")
 async def dish_men_callback(ctx):
+	await ctx.defer(edit_origin=True)
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	choice = ctx.values[0]
 	buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
@@ -704,6 +715,7 @@ async def dish_men_callback(ctx):
 
 @interactions.component_callback("dish_cou")
 async def dish_cou_callback(ctx):
+	await ctx.defer(edit_origin=True)
 	user_doc = db.collection("Users").document(str(ctx.user.id))
 	choice = ctx.values[0]
 	buy_button = Button(style=ButtonStyle.GREEN, label="Buy", custom_id="buy_button")
@@ -738,10 +750,11 @@ async def a2c_callback(ctx):
 		res_change=False
 		if 'selected_dish' in user_dic and user_dic['selected_dish'] is not None:
 			if user_dic['cart_res'] != user_dic['selected_res']:
+				user_doc.set({'cart':{}}, merge=True)
 				user_dic['cart']={}
 				user_dic['cart_res']=user_dic['selected_res']
 				res_change=True
-				print('restraunt changed')
+				print('restraunt changed', 'cart:', user_dic['cart'])
 			try:
 				if user_dic['selected_count']!=None and user_dic['selected_dish'] in user_dic['cart']:
 					user_dic['cart'][user_dic['selected_dish']] += user_dic['selected_count']
@@ -843,10 +856,10 @@ async def buy_button_callback(ctx: interactions.ComponentContext):
 async def dest_men_callback(ctx):
 	if ctx.values[0] != "Others":
 		loc = ctx.values[0]
-		# await ctx.edit_origin(content='Thank You', components=[])
+		# await ctx.message.edit(content='Thank You', components=[])
 	else:
 		loc=None
-		# await ctx.edit_origin(content='Custom drop locations will be charged 10rs delivery fee', components=[])
+		# await ctx.message.edit(content='Custom drop locations will be charged 10rs delivery fee', components=[])
 	ph = rand(["It's my Lunch. Bring ASAP Please.", "Drop by 2 PM.", "Don't forget ketchup", "Enjoy extra tips", "Bring 2 More Spoons please"])
 	if loc!=None:
 		ord_modal = interactions.Modal(
@@ -921,8 +934,8 @@ async def ord_modal_answer(ctx: interactions.ModalContext,  drop_text: str, inst
 		ord_details={'customer':str(ctx.user.id), 'drop':[drop_dest,drop_text], 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
 					'user_dm_msgid': str(user_dm_msg.id), 'ord_chan_msgid':str(ord_chan_msg.id), 'status': 'open', 'cart':user_data['cart'],
 					'cart_total': user_data['cart_total'], 'cart_res':user_data['cart_res'], 'topay':topay[0], 
-					'half_pay_1': False, 'half_pay_2': False, 'drop_params': drop_params}
-		print("\nOrder details db write:\n", ord_details, "\n")
+					'half_paid_1': [False, False], 'half_paid_2': [False, False], 'drop_params': drop_params}
+		# print("\nOrder details db write:\n", ord_details, "\n")
 		order_doc.set(ord_details, merge=True)
 		await ctx.send(f"{ctx.user.mention} Placed an Order \nFetching the Perfect person for you. Please wait until someone accepts to deliver your order.")
 	except Exception as e:
@@ -946,7 +959,7 @@ async def clear_button_callback(ctx: interactions.ComponentContext):
 
 		new_embed.set_footer(text=f"Total Cost: ₹0")
 
-		await ctx.edit_origin(embeds=new_embed, components=[])
+		await ctx.message.edit(embeds=new_embed, components=[])
 	except:
 		await ctx.send("ERROR: Unable to Clear Cart")
 
@@ -979,6 +992,7 @@ declinedBtn = Button(
 @interactions.component_callback("acc_button")
 async def acc_button_callback(ctx: interactions.ComponentContext):
 	await ctx.defer(ephemeral=True)
+	user_dic = db.collection('Users').document(str(ctx.user.id)).get().to_dict()
 	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 	guild_member = await guild.fetch_member(ctx.user.id)
 	try:
@@ -990,7 +1004,7 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 		await ctx.send(f"😵 Access Denied! You need to be registered to use this command. Use </register:1385296092232552573>", components=registerBtn)
 		return
 	else:
-		pc=db.collection('Users').document(str(ctx.user.id)).get().to_dict()['profile_completion']
+		pc=user_dic['profile_completion']
 		if pc<90:
 			await ctx.send(f"{ctx.user.mention}\n📉 Your profile is not Complete. Complete Your profile using </profile edit:1385296092232552570> to accept orders.\nCurrent Profile Completion: **{pc}**%", delete_after=5)
 			return
@@ -999,24 +1013,110 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 		ord_no = cont[cont.index('[')+1:cont.index(']')]
 		doc_ref = db.collection('orders').document(ord_no)
 		doc_data = doc_ref.get().to_dict()
-			await ctx.message.edit(components=acceptedBtn)
-		if ctx.guild.id != None:
-			await bot.delete_message(channel_id=ids_json['order_channel'], message_id=doc_data['ord_chan_msgid'])
+		await ctx.message.edit(components=acceptedBtn)
+		if ctx.guild == None:
+			await bot.get_channel(ids_json['order_channel']).get_message(doc_data['ord_chan_msgid']).delete() # Acc in DM
+			acc_inChan = False
+		else:
+			acc_inChan = True # Acc in channel
 		await ctx.send("🚀 Order Accepted", ephemeral=True, delete_after=2)
+
 		guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 		for requestee_id in doc_data['requestees']:
 			guild_member = await guild.fetch_member(requestee_id)
-			if guild_member!=None and requestee_id!=str(ctx.user.id):
+			if guild_member!=None:
 				member_dm = await guild_member.fetch_dm()
-				await member_dm.get_message(doc_data['requestees'][requestee_id]).delete()
+				if requestee_id!=str(ctx.user.id):
+					await member_dm.get_message(doc_data['requestees'][requestee_id]).delete()
+				elif acc_inChan:
+					await member_dm.get_message(doc_data['requestees'][requestee_id]).edit(components=acceptedBtn)
 		deliverer = str(ctx.user.id)
+		adv_amt=int(doc_data['topay']/2)+1
+		url_string = f"upi://pay?pa={user_dic['upi']}&am={adv_amt}&tn=Order{ord_no}_adv&cu=INR"
+		encoded_path = urllib.parse.quote(url_string, safe='')
+		redirect_url = f"https://pver-programz.github.io/url-redirector/?url={encoded_path}"
+		embed = interactions.Embed(
+				title="Payment Screen",
+				description="Half of the payment must be done in advance",
+				color=0xFAD35C,
+				url=redirect_url,
+			)
+		embed.add_field(
+			name="Advance amount",
+			value=f"₹ {adv_amt}",
+			inline=True,
+			)
+		embed.add_field(
+			name="Payment QR",
+			value=f"Pay via UPI only",
+			inline=True,
+			)
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={url_string}")
+		payBtn = Button(url=redirect_url, style=ButtonStyle.URL, label="Pay")
+		veriBtn = Button(style=ButtonStyle.SECONDARY, label="Verify Payment", custom_id=f'veriBtn_{ord_no}')
+		guild_member = await guild.fetch_member(deliverer)
+		if guild_member!=None:
+			deliverer_dm = await guild_member.fetch_dm()
+			await deliverer_dm.send(f"Order no. *[{ord_no}]*\nThank you for accepting. Your Advance Payment will be credited to you via UPI shortly.")
 		doc_ref.set({'deliverer': deliverer, 'status':"due"}, merge=True)
 		guild_member = await guild.fetch_member(doc_data['customer'])
 		if guild_member!=None:
 			member_dm = await guild_member.fetch_dm()
-			await member_dm.send(f"Your order *[{ord_no}]* has been accepted by <@{deliverer}>")
+			await member_dm.send(f"Your order *[{ord_no}]* has been accepted by <@{deliverer}>. Proceed with payment to continue.", embed=embed, components=[payBtn, veriBtn])
 	else:
 		await ctx.send("Bro you dumb ? You cannot accept your own order..!!", ephemeral=True)
+
+
+
+veriBtn_regex_pattern = re.compile(r"veriBtn_([0-9]+)")
+@interactions.component_callback(veriBtn_regex_pattern)
+async def veriBtn_callback(ctx):
+	match = veriBtn_regex_pattern.match(ctx.custom_id)
+	if match:
+		cust_id = match.group(1)
+	yesBtn = Button(style=ButtonStyle.GREEN, label="Confirm", custom_id=f'yesBtn_{cust_id}')
+	noBtn = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id='noBtn')
+	await ctx.send("Are you sure you paid ? Check your payment app before proceeding\n`Repeated payment failure can lead to ban`", components=[yesBtn, noBtn])
+
+
+yesBtn_regex_pattern = re.compile(r"yesBtn_([0-9]+)")
+@interactions.component_callback(yesBtn_regex_pattern)
+async def yesBtn_callback(ctx):
+	match = yesBtn_regex_pattern.match(ctx.custom_id)
+	if match:
+		ord_no = match.group(1)
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	recBtn = Button(style=ButtonStyle.GREEN, label="Recieved", custom_id=f'recBtn_{doc_data['customer']}')
+	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+	guild_member = await guild.fetch_member(doc_data['deliverer'])
+	if guild_member!=None:
+		member_dm = await guild_member.fetch_dm()
+		await member_dm.send(f"Payment has been credited to your UPI. Please check your payments App and Acknowledge whether you have recieved the payment to proceed.", components=[recBtn])
+	await ctx.message.delete()
+
+
+recBtn_regex_pattern = re.compile(r"recBtn_([0-9]+)")
+@interactions.component_callback(recBtn_regex_pattern)
+async def recBtn_callback(ctx):
+	print("recived clicked")
+	match = recBtn_regex_pattern.match(ctx.custom_id)
+	if match:
+		cust_id = match.group(1)
+	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+	guild_member = await guild.fetch_member(cust_id)
+	if guild_member!=None:
+		member_dm = await guild_member.fetch_dm()
+		await member_dm.send(f"Payment has been verified.\nFood is on the way 🍽️")
+	await ctx.message.delete()
+
+
+
+@interactions.component_callback('noBtn')
+async def noBtn_callback(ctx):
+	await ctx.message.delete()
+
+
 
 
 @interactions.component_callback("viewdetails_button")
@@ -1049,7 +1149,7 @@ async def dec_button_callback(ctx: interactions.ComponentContext):
 	doc_data = doc_ref.get().to_dict()
 	doc_data['requestees'][str(ctx.user.id)]=firestore.DELETE_FIELD
 	doc_ref.set({'requestees': doc_data['requestees']}, merge=True)
-	await ctx.edit_origin(components=declinedBtn)
+	await ctx.message.edit(components=declinedBtn)
 
 @interactions.component_callback("upd_button")
 async def upd_button_callback(ctx: interactions.ComponentContext):
@@ -1062,7 +1162,7 @@ async def canc_button_callback(ctx: interactions.ComponentContext):
 	doc_ref = db.collection('orders').document(ord_no)
 	doc_data = doc_ref.get().to_dict()
 	if doc_data['status']=='open':
-		await ctx.edit_origin(components=canceledBtn)
+		await ctx.message.edit(components=canceledBtn)
 		await bot.get_channel(ids_json['order_channel']).get_message(doc_data['ord_chan_msgid']).edit(components=canceledBtn)
 		for requestee_id in doc_data['requestees']:
 			guild = await ctx.bot.fetch_guild(ids_json['server_id'])
@@ -1075,7 +1175,13 @@ async def canc_button_callback(ctx: interactions.ComponentContext):
 		update_button = Button(style=ButtonStyle.PRIMARY, label="Order Status", custom_id="upd_button")
 		canc_button = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id="canc_button", disabled=True)
 		userDmRow = ActionRow(update_button, canc_button)
-		await ctx.edit_origin(components=userDmRow)
+		await ctx.message.edit(components=userDmRow)
 		await ctx.send("It's too late to cancel now.")
 
 bot.start()
+
+
+'''
+TODO:
+Payment not recieved screenshot - message context menu
+'''
