@@ -5,3 +5,7 @@ uses discord slash commands to interact with user.
 https://discord.gg/j8edrhaChz.
 
 Jurigged mode is better for development, use `py -m jurigged -v --poll 1 campc.py`. BTW idk what the "poll" does.
+
+Delivery fee percent caluculation: percent = (amt/price)*100
+amt: Food price
+price: Final delivery value
