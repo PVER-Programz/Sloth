@@ -312,8 +312,11 @@ async def profile_view(ctx: interactions.SlashContext):
 		value="Your UPI QR:",
 		inline=False,
 	)
+	url_string = user_data['upi']
+	encoded_path = urllib.parse.quote(url_string, safe='')
+	redirect_url = f"https://pver-programz.github.io/url-redirector/?url={encoded_path}"
 	if "@" in user_data['upi'] and " " not in user_data['upi'].strip():
-		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data=upi://pay?pa={user_data['upi']}")
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data=upi://pay?pa={url_string}")
 	else:
 		embed.set_image(url=f"https://placehold.co/600x300/FF0000/FFFFFF.png?text=UPI_not_set")
 	await ctx.send(embed=embed, ephemeral=True)
@@ -1033,6 +1036,7 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 		deliverer = str(ctx.user.id)
 		adv_amt=int(doc_data['topay']/2)+1
 		url_string = f"upi://pay?pa={user_dic['upi']}&am={adv_amt}&tn=Order{ord_no}_adv&cu=INR"
+		print("upi url: ", url_string)
 		encoded_path = urllib.parse.quote(url_string, safe='')
 		redirect_url = f"https://pver-programz.github.io/url-redirector/?url={encoded_path}"
 		embed = interactions.Embed(
@@ -1051,9 +1055,9 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 			value=f"Pay via UPI only",
 			inline=True,
 			)
-		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={url_string}")
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={encoded_path}")
 		payBtn = Button(url=redirect_url, style=ButtonStyle.URL, label="Pay")
-		veriBtn = Button(style=ButtonStyle.SECONDARY, label="Verify Payment", custom_id=f'veriBtn_{ord_no}')
+		veriBtn = Button(style=ButtonStyle.SECONDARY, label="Verify Payment", custom_id=f'veriBtn_{ord_no}_1')
 		guild_member = await guild.fetch_member(deliverer)
 		if guild_member!=None:
 			deliverer_dm = await guild_member.fetch_dm()
@@ -1068,47 +1072,149 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 
 
 
-veriBtn_regex_pattern = re.compile(r"veriBtn_([0-9]+)")
+veriBtn_regex_pattern = re.compile(r"veriBtn_([0-9]+)_([0-9]+)")
 @interactions.component_callback(veriBtn_regex_pattern)
 async def veriBtn_callback(ctx):
 	match = veriBtn_regex_pattern.match(ctx.custom_id)
 	if match:
-		cust_id = match.group(1)
-	yesBtn = Button(style=ButtonStyle.GREEN, label="Confirm", custom_id=f'yesBtn_{cust_id}')
+		ord_no = match.group(1)
+		pay_index = match.group(2)
+	print('veri button', ord_no, 'pay_index: ', pay_index)
+	yesBtn = Button(style=ButtonStyle.GREEN, label="Confirm", custom_id=f'yesBtn_{ord_no}_{pay_index}')
 	noBtn = Button(style=ButtonStyle.DANGER, label="Cancel", custom_id='noBtn')
-	await ctx.send("Are you sure you paid ? Check your payment app before proceeding\n`Repeated payment failure can lead to ban`", components=[yesBtn, noBtn])
+	await ctx.send("Are you sure you paid ? Check your payment app before proceeding\n-# Repeated payment failure can lead to ban", components=[yesBtn, noBtn])
 
 
-yesBtn_regex_pattern = re.compile(r"yesBtn_([0-9]+)")
+yesBtn_regex_pattern = re.compile(r"yesBtn_([0-9]+)_([0-9]+)")
 @interactions.component_callback(yesBtn_regex_pattern)
 async def yesBtn_callback(ctx):
 	match = yesBtn_regex_pattern.match(ctx.custom_id)
 	if match:
 		ord_no = match.group(1)
+		pay_index = match.group(2)
+	print('yes button', ord_no, 'pay_index: ', pay_index)
 	doc_ref = db.collection('orders').document(ord_no)
 	doc_data = doc_ref.get().to_dict()
-	recBtn = Button(style=ButtonStyle.GREEN, label="Recieved", custom_id=f'recBtn_{doc_data['customer']}')
+	doc_ref.set({f'half_paid_{pay_index}': [True, False]}, merge=True)
+	recBtn = Button(style=ButtonStyle.GREEN, label="Recieved", custom_id=f'recBtn_{ord_no}_{pay_index}')
 	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 	guild_member = await guild.fetch_member(doc_data['deliverer'])
 	if guild_member!=None:
 		member_dm = await guild_member.fetch_dm()
-		await member_dm.send(f"Payment has been credited to your UPI. Please check your payments App and Acknowledge whether you have recieved the payment to proceed.", components=[recBtn])
+		await member_dm.send(f"Payment has been credited to your UPI for the order *[{ord_no}]*. Please check your payments App and Acknowledge whether you have recieved the payment to proceed.", components=[recBtn])
 	await ctx.message.delete()
 
 
-recBtn_regex_pattern = re.compile(r"recBtn_([0-9]+)")
+recBtn_regex_pattern = re.compile(r"recBtn_([0-9]+)_([0-9]+)")
 @interactions.component_callback(recBtn_regex_pattern)
 async def recBtn_callback(ctx):
 	print("recived clicked")
 	match = recBtn_regex_pattern.match(ctx.custom_id)
 	if match:
-		cust_id = match.group(1)
+		ord_no = match.group(1)
+		pay_index = match.group(2)
+	print('rec button', ord_no, 'pay_index: ', pay_index)
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	cust_id=doc_data['customer']
 	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
 	guild_member = await guild.fetch_member(cust_id)
 	if guild_member!=None:
 		member_dm = await guild_member.fetch_dm()
-		await member_dm.send(f"Payment has been verified.\nFood is on the way 🍽️")
+		if int(pay_index)==1:
+			await member_dm.send(f"Payment has been verified. Food is on the way 🍽️")
+			pickBtn = Button(style=ButtonStyle.PRIMARY, label="Yep, I Picked", custom_id=f'pickBtn_{ord_no}')
+			await ctx.send(f"Great !!\nJust let us know when you have picked the order from the shop. 😀\nOrder no. *[{ord_no}]*", components=[pickBtn])
+		else:
+			await member_dm.send("Payment has been verified. Bon Appetite 🍽️")
+			deliBtn = Button(style=ButtonStyle.PRIMARY, label="Yep, Mission successful", custom_id=f'deliBtn_{ord_no}')
+			await ctx.send(f"Nice !!\nJust let us know when you have Delivered the order. 😀\nOrder no. *[{ord_no}]*", components=[deliBtn])
 	await ctx.message.delete()
+	doc_ref.set({f'half_paid_{pay_index}': [True, True]}, merge=True)
+
+
+pickBtn_regex_pattern = re.compile(r"pickBtn_([0-9]+)")
+@interactions.component_callback(pickBtn_regex_pattern)
+async def pickBtn_callback(ctx):
+	match = pickBtn_regex_pattern.match(ctx.custom_id)
+	if match:
+		ord_no = match.group(1)
+	print('pick button', ord_no)
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	cashBtn = Button(style=ButtonStyle.SECONDARY, label="Cash", custom_id=f'pay2mode_{ord_no}_1')
+	onlnBtn = Button(style=ButtonStyle.PRIMARY, label="GPay", custom_id=f'pay2mode_{ord_no}_2')
+	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+	guild_member = await guild.fetch_member(doc_data['customer'])
+	if guild_member!=None:
+		member_dm = await guild_member.fetch_dm()
+		await member_dm.send(f"<@{doc_data['deliverer']}> has pickked your order.\nHow do you wish to pay the balance ?", components=[onlnBtn, cashBtn])
+	doc_ref.set({'status': 'picked'}, merge=True)
+	pickedBtn = Button(custom_id="picked_btn", style=ButtonStyle.SECONDARY, label="Picked", disabled=True, emoji="👍")
+	await ctx.edit_origin(components=[pickedBtn])
+
+
+pay2mode_regex_pattern = re.compile(r"pay2mode_([0-9]+)_([0-9]+)")
+@interactions.component_callback(pay2mode_regex_pattern)
+async def pay2mode_callback(ctx):
+	match = pay2mode_regex_pattern.match(ctx.custom_id)
+	if match:
+		ord_no = match.group(1)
+		mode = match.group(2)
+	print('pay2mode', ord_no, 'mode:', mode)
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	deliBtn = Button(style=ButtonStyle.PRIMARY, label="Yep, Mission successful", custom_id=f'deliBtn_{ord_no}')
+	if mode=='1':
+		guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+		guild_member = await guild.fetch_member(doc_data['deliverer'])
+		if guild_member!=None:
+			member_dm = await guild_member.fetch_dm()
+			await member_dm.send(f"💸 Balance payment will be done in cash on delivery.\nClick the below button once the delivery is complete.", components=[deliBtn])
+		doc_ref.set({'half_paid_2': 'cash'}, merge=True)
+	else:
+		user_dic = db.collection('Users').document(str(ctx.user.id)).get().to_dict()
+		adv_amt=int(doc_data['topay']/2)+1
+		url_string = f"upi://pay?pa={user_dic['upi']}&am={adv_amt}&tn=Order{ord_no}_adv&cu=INR"
+		encoded_path = urllib.parse.quote(url_string, safe='')
+		redirect_url = f"https://pver-programz.github.io/url-redirector/?url={encoded_path}"
+		embed = interactions.Embed(
+				title="Payment Screen",
+				description="Balance payment.",
+				color=0xFAD35C,
+				url=redirect_url,
+			)
+		embed.add_field(
+			name="Amount",
+			value=f"₹ {adv_amt}",
+			inline=True,
+			)
+		embed.add_field(
+			name="Payment QR",
+			value=f"Pay via UPI",
+			inline=True,
+			)
+		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={encoded_path}")
+		payBtn = Button(url=redirect_url, style=ButtonStyle.URL, label="Pay")
+		veriBtn = Button(style=ButtonStyle.SECONDARY, label="Verify Payment", custom_id=f'veriBtn_{ord_no}_2')
+	await ctx.edit_origin(content='Order Picked', components=[])
+
+deliBtn_regex_pattern = re.compile(r"deliBtn_([0-9]+)")
+@interactions.component_callback(deliBtn_regex_pattern)
+async def deliBtn_callback(ctx):
+	match = recBtn_regex_pattern.match(ctx.custom_id)
+	if match:
+		ord_no = match.group(1)
+	print("deli butn", ord_no)
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	guild = await ctx.bot.fetch_guild(ids_json['server_id'])
+	guild_member = await guild.fetch_member(doc_data['customer'])
+	if guild_member!=None:
+		member_dm = await guild_member.fetch_dm()
+		await member_dm.send(f"{ctx.user.mention} has just delivered your order. :)\n||Incase of disputes use </support:12345>||")
+	doc_ref.set({'status': 'delivered'}, merge=True)
+	await ctx.send("Thank you for your service 🫡")
 
 
 
@@ -1183,5 +1289,8 @@ bot.start()
 
 '''
 TODO:
+order status update
 Payment not recieved screenshot - message context menu
+complaint ticket raising system
+Line 1205 deliBtn_callback - support command id
 '''
