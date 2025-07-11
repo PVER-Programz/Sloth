@@ -365,7 +365,7 @@ async def register(ctx: interactions.SlashContext, vit_email: str):
 				await ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
 			else:
 				if send_reset_link(email):
-					await ctx.send("Check your email for a password reset link. Set your password and then Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
+					await ctx.send("Check your email for a password reset link. Set your password and then Use </connect:1385296092232552574> to connect your discord to Sloth App.\n`Check Spam folder too`", components=[gmailBtn, connectBtn])
 				else:
 					await ctx.send("Registration ERROR: Unable to send verification mail.")
 				# link = auth.generate_password_reset_link(email)
@@ -373,7 +373,7 @@ async def register(ctx: interactions.SlashContext, vit_email: str):
 		except auth.UserNotFoundError:
 			user = auth.create_user(email=email,password=email[::-1])
 			if send_reset_link(email):
-				await ctx.send("Check your email for a password reset link. Use </connect:1385296092232552574> to connect your discord to Sloth App.", components=[gmailBtn, connectBtn])
+				await ctx.send("Check your email for a password reset link. Use </connect:1385296092232552574> to connect your discord to Sloth App.\n`Check Spam folder too`", components=[gmailBtn, connectBtn])
 			else:
 				await ctx.send("Registration ERROR: Unable to send verification mail.")
 		except:
@@ -936,7 +936,7 @@ async def ord_modal_answer(ctx: interactions.ModalContext,  drop_text: str, inst
 		ord_chan_msg = await bot.get_channel(ids_json['order_channel']).send(f"{ctx.user.mention} Order No. *[{ord_no}]* \nDelivery to **{drop_dest} {drop_text}**\n{inst_text}", components=[acc_button, viewDet_button])
 		ord_details={'customer':str(ctx.user.id), 'drop':[drop_dest,drop_text], 'instruction':inst_text, 'requestees':requested_users_id_msgs, 
 					'user_dm_msgid': str(user_dm_msg.id), 'ord_chan_msgid':str(ord_chan_msg.id), 'status': 'open', 'cart':user_data['cart'],
-					'cart_total': user_data['cart_total'], 'cart_res':user_data['cart_res'], 'topay':topay[0], 
+					'cart_total': user_data['cart_total'], 'cart_res':user_data['cart_res'], 'topay':topay[0], 'deliverer': None,
 					'half_paid_1': [False, False], 'half_paid_2': [False, False], 'drop_params': drop_params}
 		# print("\nOrder details db write:\n", ord_details, "\n")
 		order_doc.set(ord_details, merge=True)
@@ -1066,7 +1066,7 @@ async def acc_button_callback(ctx: interactions.ComponentContext):
 		guild_member = await guild.fetch_member(doc_data['customer'])
 		if guild_member!=None:
 			member_dm = await guild_member.fetch_dm()
-			await member_dm.send(f"Your order *[{ord_no}]* has been accepted by <@{deliverer}>. Proceed with payment to continue.", embed=embed, components=[payBtn, veriBtn])
+			await member_dm.send(f"Your order *[{ord_no}]* has been accepted by <@{deliverer}>. Proceed with payment to continue.\nPay the amount and click verify.", embed=embed, components=[payBtn, veriBtn])
 	else:
 		await ctx.send("Bro you dumb ? You cannot accept your own order..!!", ephemeral=True)
 
@@ -1108,6 +1108,7 @@ async def yesBtn_callback(ctx):
 recBtn_regex_pattern = re.compile(r"recBtn_([0-9]+)_([0-9]+)")
 @interactions.component_callback(recBtn_regex_pattern)
 async def recBtn_callback(ctx):
+	await ctx.defer()
 	print("recived clicked")
 	match = recBtn_regex_pattern.match(ctx.custom_id)
 	if match:
@@ -1197,12 +1198,12 @@ async def pay2mode_callback(ctx):
 		embed.set_image(url=f"https://api.qrserver.com/v1/create-qr-code/?size=225x225&data={encoded_path}")
 		payBtn = Button(url=redirect_url, style=ButtonStyle.URL, label="Pay")
 		veriBtn = Button(style=ButtonStyle.SECONDARY, label="Verify Payment", custom_id=f'veriBtn_{ord_no}_2')
-	await ctx.edit_origin(content='Order Picked', components=[])
+		await ctx.edit_origin(content='Order Picked. Complete Balance payment.', embed=embed, components=[payBtn, veriBtn])
 
 deliBtn_regex_pattern = re.compile(r"deliBtn_([0-9]+)")
 @interactions.component_callback(deliBtn_regex_pattern)
 async def deliBtn_callback(ctx):
-	match = recBtn_regex_pattern.match(ctx.custom_id)
+	match = deliBtn_regex_pattern.match(ctx.custom_id)
 	if match:
 		ord_no = match.group(1)
 	print("deli butn", ord_no)
@@ -1212,14 +1213,16 @@ async def deliBtn_callback(ctx):
 	guild_member = await guild.fetch_member(doc_data['customer'])
 	if guild_member!=None:
 		member_dm = await guild_member.fetch_dm()
-		await member_dm.send(f"{ctx.user.mention} has just delivered your order. :)\n||Incase of disputes use </support:12345>||")
+		await member_dm.send(f"{ctx.user.mention} has just delivered your order. 😀\n||Incase of disputes use </support:12345>||")
 	doc_ref.set({'status': 'delivered'}, merge=True)
 	await ctx.send("Thank you for your service 🫡")
+	await ctx.message.delete()
 
 
 
 @interactions.component_callback('noBtn')
 async def noBtn_callback(ctx):
+	await ctx.send("Pay and Verify again.", delete_after=5)
 	await ctx.message.delete()
 
 
@@ -1259,7 +1262,52 @@ async def dec_button_callback(ctx: interactions.ComponentContext):
 
 @interactions.component_callback("upd_button")
 async def upd_button_callback(ctx: interactions.ComponentContext):
-	await ctx.send("Update Button")
+	cont=ctx.message.content
+	ord_no = cont[cont.index('[')+1:cont.index(']')]
+	doc_ref = db.collection('orders').document(ord_no)
+	doc_data = doc_ref.get().to_dict()
+	stat_list=[]
+	deli_text=''
+	if doc_data['status']=='open':
+		stat_list.append('✅')
+		for x in range(7):
+			stat_list.append('❌')
+	elif doc_data['status']=='due':
+		for x in range(2):
+			stat_list.append('✅')
+		deli_text=f"\nDelivery by <@{doc_data['deliverer']}>"
+		stat_list.append("✅" if doc_data['half_paid_1'][0] else '❌')
+		stat_list.append("✅" if doc_data['half_paid_1'][1] else '❌')
+		for x in range(4):
+			stat_list.append('❌')
+	elif doc_data['status']=='picked':
+		for x in range(5):
+			stat_list.append('✅')
+		try:
+			stat_list.append("✅" if doc_data['half_paid_2'][0] else '❌')
+			stat_list.append("✅" if doc_data['half_paid_2'][1] else '❌')
+		except:
+			stat_list.append('✅')
+			stat_list.append('✅')
+		stat_list.append('❌')
+	elif doc_data['status']=='delivered':
+		for x in range(8):
+			stat_list.append('✅')
+	else:
+		print(f"Error occured in status update for {ord_no}")
+		await ctx.send("ERROR Occured")
+	text = f'''
+Order No. *[{ord_no}]*
+{stat_list[0]}	Order Placed on <t:{ord_no}>
+{stat_list[1]}	Deliverer Accepted{deli_text}
+{stat_list[2]}	Advance Paid by Customer
+{stat_list[3]}	Advance Recieved by Deliverer
+{stat_list[4]}	Order Picked up
+{stat_list[5]}	Payment Completed by Customer
+{stat_list[6]}	Payment Recieved by Deliverer
+{stat_list[7]}	Delivered
+	'''.strip()
+	await ctx.send(text, delete_after=30)
 
 @interactions.component_callback("canc_button")
 async def canc_button_callback(ctx: interactions.ComponentContext):
