@@ -359,7 +359,7 @@ async def register(ctx: interactions.SlashContext, vit_email: str):
 			disids = " "
 			id_count=0
 			for x in res:
-				disids=disids+f"<@{x.id}>"
+				disids=disids+f"<@{x.id}> "
 				id_count=id_count+1
 			if id_count>0:
 				await ctx.send(f"User with email `{email[:4]}****@vitstudent.ac.in` already exists. and registered to {disids}")
@@ -371,6 +371,7 @@ async def register(ctx: interactions.SlashContext, vit_email: str):
 				# link = auth.generate_password_reset_link(email)
 				# await ctx.send(f"user {user.uid} \n link {link}", components=[gmailBtn, connectBtn])
 		except auth.UserNotFoundError:
+			print('creating user with', email)
 			user = auth.create_user(email=email,password=email[::-1])
 			if send_reset_link(email):
 				await ctx.send("Check your email for a password reset link. Use </connect:1385296092232552574> to connect your discord to Sloth App.\n`Check Spam folder too`", components=[gmailBtn, connectBtn])
@@ -465,9 +466,11 @@ async def con_modal_response(modal_ctx: interactions.ModalContext, con_short_tex
 			try:
 				trigger_except_block = auth.get_user_by_email(email)
 				if sign_in_with_email_and_password(email, password):
-					dis_uid = modal_ctx.user.id
+					dis_uid = str(modal_ctx.user.id)
 					guild = await bot.fetch_guild(ids_json['server_id'])
-					member = guild.get_member(dis_uid)
+					# print('guild: ', guild)
+					member = await guild.fetch_member(dis_uid)
+					print('new member: ', member)
 					user_data = {"email": email, "username": modal_ctx.user.username, "in_deli": False, "can_deli": True, 'cart':{}, 'cart_res':None,
 								"name": email[:email.index('@')], "phone": '0000000000', "upi": "not_set", "profile_completion": int((1/6)*100),
 								"gender": None, "hosteller": None}
@@ -1337,7 +1340,7 @@ bot.start()
 
 '''
 TODO:
-order status update
+order status update... done
 Payment not recieved screenshot - message context menu
 complaint ticket raising system
 Line 1205 deliBtn_callback - support command id
