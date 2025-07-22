@@ -1,0 +1,4 @@
+interactions.py==5.14.0
+firebase-admin==6.6.0
+requests==2.32.3
+urllib3==1.26.20
